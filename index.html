@@ -239,10 +239,14 @@ body.qm #opts{box-shadow:inset 0 -3px 0 #e33}
 <div class="r"><label>Ukuran</label><input id="sz" type="range" min="1" max="200" value="12"></div>
 <div class="r"><label>Opasitas</label><input id="op" type="range" min="1" max="100" value="100"></div>
 <div class="r"><label>Toleransi</label><input id="tol" type="range" min="0" max="100" value="24"></div>
+<div class="r"><label>Feather seleksi</label><input id="sfea" type="number" min="0" max="250" value="0" style="width:70px"></div>
+<div class="r"><label>Wand: contiguous</label><input id="wcont" type="checkbox" checked></div>
+<div class="r"><label>Wand: semua layer</label><input id="wall" type="checkbox" checked></div>
+<div class="r"><label>Wand: anti-alias</label><input id="waa" type="checkbox" checked></div>
 <div class="r"><label>Teks</label><input id="fsz" type="number" value="48" min="6" style="width:62px"><select id="fam" style="flex:1"><option>Times New Roman</option><option>Arial</option><option>Helvetica</option><option>Georgia</option><option>Verdana</option><option>Tahoma</option><option>Trebuchet MS</option><option>Courier New</option><option>Comic Sans MS</option><option>Impact</option><option>sans-serif</option><option>serif</option><option>monospace</option><option>cursive</option></select></div>
 <div class="r"><label>Isi bentuk</label><input id="fillc" type="checkbox" checked></div>
 </div>
-   <div class="sh cl">Seleksi</div><div class="sb" hidden><div class="r"><label>Mode</label><select id="smode" style="flex:1"><option value="new">Baru</option><option value="add">Tambah</option><option value="sub">Kurangi</option></select></div>
+   <div class="sh cl">Seleksi</div><div class="sb" hidden><div class="r"><label>Mode</label><select id="smode" style="flex:1"><option value="new">Baru</option><option value="add">Tambah</option><option value="sub">Kurangi</option><option value="int">Irisan</option></select></div>
 <div class="bar"><button id="sAll">Semua</button><button id="sNone">Batal</button><button id="sInv">Balik</button><button id="sDel">Hapus isi</button><button id="sCpy">Layer dari seleksi</button></div>
 <div style="color:var(--m);margin-top:4px">Shift = tambah, Alt = kurangi. Alat Pindah memindahkan isi seleksi.</div>
 </div>
@@ -787,18 +791,25 @@ function build(){
  $('#lo').oninput=e=>{A.o=+e.target.value;render()};$('#lo').onchange=push;$('#lm').onchange=e=>{A.m=e.target.value;push();render()};
 }
 const rs=(c,w,h)=>{const n=mk(Math.max(1,w|0),Math.max(1,h|0)),g=n.getContext('2d');g.imageSmoothingQuality='high';g.drawImage(c,0,0,n.width,n.height);return n};
-const md=e=>{const m=$('#smode').value;if((T=='qsel'||T=='osel')&&(e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey)return m=='sub'?'add':'sub';return e.shiftKey?'add':e.altKey?'sub':m};
-const selPath=(g,a,b)=>{const w=b.x-a.x,h=b.y-a.y;T=='esel'?g.ellipse(a.x+w/2,a.y+h/2,Math.abs(w/2),Math.abs(h/2),0,0,7):g.rect(a.x,a.y,w,h)};
+const md=e=>{const m=$('#smode').value;if((T=='qsel'||T=='osel')&&(e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey)return m=='sub'?'add':'sub';if(T!='qsel'&&T!='osel'&&e.shiftKey&&e.altKey)return'int';return e.shiftKey?'add':e.altKey?'sub':m};
+const selPath=(g,a,b,mod)=>{let w=b.x-a.x,h=b.y-a.y,x0=a.x,y0=a.y;if(mod&&mod.sh){const q=Math.max(Math.abs(w),Math.abs(h));w=(w<0?-q:q);h=(h<0?-q:q)}if(mod&&mod.al){x0=a.x-w;y0=a.y-h;w*=2;h*=2}T=='esel'?g.ellipse(x0+w/2,y0+h/2,Math.abs(w/2),Math.abs(h/2),0,0,7):g.rect(x0,y0,w,h)};
 function ovr(){ox.clearRect(0,0,D.w,D.h);ovrX();if(SEL&&!QM){const t=Math.max(1,Math.round(1.2/V.s));if(!SEL.e||SEL.t!=t){SEL.e=edge(SEL.m,t);SEL.t=t}ants()}
  if(T=='xf'&&A){const w=A.c.width,h=A.c.height,r=8/V.s;ox.save();ox.lineWidth=1.5/V.s;ox.strokeStyle='#4c8dff';ox.fillStyle='#fff';ox.strokeRect(A.x,A.y,w,h);[[A.x,A.y],[A.x+w,A.y],[A.x+w,A.y+h],[A.x,A.y+h]].forEach(([x,y])=>{ox.fillRect(x-r/2,y-r/2,r,r);ox.strokeRect(x-r/2,y-r/2,r,r)});ox.restore()}}
-function comb(m,mode){if(!SEL||mode=='new'){SEL={m}}else{const g=SEL.m.getContext('2d');g.globalCompositeOperation=mode=='add'?'source-over':'destination-out';g.drawImage(m,0,0);g.globalCompositeOperation='source-over';SEL.e=null}ovr()}
+function featherM(m,f){f=+f||0;if(f<=0.4)return m;const w=m.width,h=m.height,a=mAlpha(m),o=gaussF(Float32Array.from(a),w,h,f/2,1),c=mk(w,h),g=c.getContext('2d'),im=g.createImageData(w,h),d=im.data;for(let i=0;i<a.length;i++){const v=Math.max(0,Math.min(255,o[i]));if(v>0){d[i*4]=76;d[i*4+1]=141;d[i*4+2]=255;d[i*4+3]=v}}g.putImageData(im,0,0);return c}
+function comb(m,mode){if(!SEL||mode=='new'){SEL={m}}else{const g=SEL.m.getContext('2d');g.globalCompositeOperation=mode=='add'?'source-over':mode=='int'?'destination-in':'destination-out';g.drawImage(m,0,0);g.globalCompositeOperation='source-over';SEL.e=null}ovr()}
 const mkm=fn=>{const m=mk(D.w,D.h),g=m.getContext('2d');g.fillStyle='#4c8dff';fn(g);return m};
 function clipSel(){if(!SEL||!bk)return;const g=A.c.getContext('2d');g.save();g.globalCompositeOperation='destination-in';g.drawImage(SEL.m,-A.x,-A.y);g.restore();const t=cl(bk),tg=t.getContext('2d');tg.globalCompositeOperation='destination-out';tg.drawImage(SEL.m,-A.x,-A.y);g.drawImage(t,0,0)}
 function lift(cut){const o=A,n=mk(D.w,D.h),g=n.getContext('2d');g.drawImage(o.c,o.x,o.y);g.globalCompositeOperation='destination-in';g.drawImage(SEL.m,0,0);if(cut){const og=o.c.getContext('2d');og.save();og.globalCompositeOperation='destination-out';og.drawImage(SEL.m,-o.x,-o.y);og.restore()}return n}
-function wand(sx,sy,t){sx|=0;sy|=0;if(sx<0||sy<0||sx>=D.w||sy>=D.h)return null;render();const W=D.w,Hh=D.h,d=cx.getImageData(0,0,W,Hh).data,i0=(sy*W+sx)*4,T0=[d[i0],d[i0+1],d[i0+2],d[i0+3]],seen=new Uint8Array(W*Hh),s=[sx,sy];
- const ok=i=>Math.abs(d[i]-T0[0])+Math.abs(d[i+1]-T0[1])+Math.abs(d[i+2]-T0[2])+Math.abs(d[i+3]-T0[3])<=t*4;
- while(s.length){const y=s.pop(),x=s.pop(),p=y*W+x;if(seen[p]||!ok(p*4))continue;seen[p]=1;if(x>0)s.push(x-1,y);if(x<W-1)s.push(x+1,y);if(y>0)s.push(x,y-1);if(y<Hh-1)s.push(x,y+1)}
- const o=new ImageData(W,Hh),od=o.data;for(let p=0;p<W*Hh;p++)if(seen[p]){od[p*4]=76;od[p*4+1]=141;od[p*4+2]=255;od[p*4+3]=255}
+function wand(sx,sy,t){sx|=0;sy|=0;if(sx<0||sy<0||sx>=D.w||sy>=D.h)return null;const W=D.w,Hh=D.h,all=$('#wall').checked||!A;let d;
+ if(all){render();d=cx.getImageData(0,0,W,Hh).data}else{const c=mk(W,Hh);c.getContext('2d').drawImage(A.c,A.x,A.y);d=c.getContext('2d').getImageData(0,0,W,Hh).data}
+ const i0=(sy*W+sx)*4,T0=[d[i0],d[i0+1],d[i0+2],d[i0+3]],seen=new Uint8Array(W*Hh),tt=t*2;
+ /* toleransi gaya Photoshop: selisih tiap kanal (R,G,B,A) <= batas */
+ const ok=i=>Math.abs(d[i]-T0[0])<=tt&&Math.abs(d[i+1]-T0[1])<=tt&&Math.abs(d[i+2]-T0[2])<=tt&&Math.abs(d[i+3]-T0[3])<=tt;
+ if($('#wcont').checked){const s=[sx,sy];while(s.length){const y=s.pop(),x=s.pop(),p=y*W+x;if(seen[p]||!ok(p*4))continue;seen[p]=1;if(x>0)s.push(x-1,y);if(x<W-1)s.push(x+1,y);if(y>0)s.push(x,y-1);if(y<Hh-1)s.push(x,y+1)}}
+ else{for(let p=0;p<W*Hh;p++)if(ok(p*4))seen[p]=1}
+ let a=new Float32Array(W*Hh);for(let p=0;p<W*Hh;p++)if(seen[p])a[p]=255;
+ if($('#waa').checked)a=gaussF(a,W,Hh,.7,1);
+ const o=new ImageData(W,Hh),od=o.data;for(let p=0;p<W*Hh;p++){const v=a[p];if(v>2){od[p*4]=76;od[p*4+1]=141;od[p*4+2]=255;od[p*4+3]=Math.min(255,v)}}
  const m=mk(W,Hh);m.getContext('2d').putImageData(o,0,0);return m}
 const selOp={all:()=>comb(mkm(g=>g.fillRect(0,0,D.w,D.h)),'new'),none:()=>{SEL=null;if(cur)cur.pen=null;ovr()},
  inv:()=>{const m=mkm(g=>g.fillRect(0,0,D.w,D.h));if(SEL){const g=m.getContext('2d');g.globalCompositeOperation='destination-out';g.drawImage(SEL.m,0,0)}SEL={m};ovr()},
@@ -821,11 +832,12 @@ st.onpointerdown=e=>{st.setPointerCapture(e.pointerId);
  if(e.button==1||sp||T=='hand'){drag={pan:1,x:e.clientX,y:e.clientY,vx:V.x,vy:V.y};return}
  const p=pt(e);if(!A||(A.lock&&(T=='move'||T=='xf')))return;drag={s:p,last:p,l:{x:A.x,y:A.y},md:md(e)};
  if(SEL&&(T=='brush'||T=='eraser'||T=='bucket'))bk=cl(A.c);
+ if((T=='sel'||T=='esel'||T=='lasso')&&SEL&&drag.md=='new'){const px=p.x|0,py=p.y|0;if(px>=0&&py>=0&&px<D.w&&py<D.h&&SEL.m.getContext('2d').getImageData(px,py,1,1).data[3]>127){drag.inside=1;drag.msel=cl(SEL.m);drag.moved=0;return}}
  if(NT.has(T)){newDown(p,e)}else if(T=='move'&&SEL){addLayer('Dipindah',lift(1));SEL=null;ovr();drag.l={x:A.x,y:A.y}}
  else if(T=='xf'){const w=A.c.width,h=A.c.height,r=14/V.s,cs=[[A.x,A.y],[A.x+w,A.y],[A.x+w,A.y+h],[A.x,A.y+h]],i=cs.findIndex(c=>Math.abs(c[0]-p.x)<r&&Math.abs(c[1]-p.y)<r);if(i>=0)drag.xf={i,o:A.c,x:A.x,y:A.y,w,h};else drag.mv=1}
  else if(T=='qsel'){render();drag.im=cx.getImageData(0,0,D.w,D.h);if(drag.md=='new'||!SEL)SEL={m:mkm(()=>{})};qstep(p);ovr()}
  else if(T=='heal'){drag.pts=[p]}
- else if(T=='wand'){const m=wand(p.x,p.y,+tol.value);if(m)comb(m,md(e));drag=null}
+ else if(T=='wand'){const m=wand(p.x,p.y,+tol.value);if(m)comb(featherM(m,$('#sfea').value),md(e));drag=null}
  else if(T=='brush'||T=='eraser')stroke(p,p);
  else if(T=='eyedrop'){if(p.x>=0&&p.y>=0&&p.x<D.w&&p.y<D.h){const d=cx.getImageData(p.x|0,p.y|0,1,1).data;col.value='#'+[...d].slice(0,3).map(v=>v.toString(16).padStart(2,'0')).join('')}drag=null}
  else if(T=='bucket'){flood(A,p.x-A.x,p.y-A.y,col.value,+tol.value);clipSel();bk=null;push();render();drag=null}
@@ -833,17 +845,19 @@ st.onpointerdown=e=>{st.setPointerCapture(e.pointerId);
 st.onpointermove=e=>{if(!drag)return;
  if(drag.pan){V.x=drag.vx+e.clientX-drag.x;V.y=drag.vy+e.clientY-drag.y;tf();return}
  const p=pt(e);if(NT.has(T)){newMove(p,e);return}
+ if(drag.msel){const dx=Math.round(p.x-drag.s.x),dy=Math.round(p.y-drag.s.y);if(dx||dy)drag.moved=1;const n=mk(D.w,D.h);n.getContext('2d').drawImage(drag.msel,dx,dy);SEL={m:n};ovr();return}
  if(T=='qsel'){const a=drag.last,n=Math.max(1,Math.ceil(Math.hypot(p.x-a.x,p.y-a.y)/Math.max(2,sz.value/4)));for(let i=1;i<=n;i++)qstep({x:a.x+(p.x-a.x)*i/n,y:a.y+(p.y-a.y)*i/n});drag.last=p;ovr()}
  else if(T=='heal'){drag.pts.push(p);ovr();ox.save();ox.strokeStyle='rgba(255,0,80,.45)';ox.lineWidth=+sz.value;ox.lineCap=ox.lineJoin='round';ox.beginPath();drag.pts.forEach((q,i)=>i?ox.lineTo(q.x,q.y):ox.moveTo(q.x,q.y));ox.lineTo(p.x+.01,p.y);ox.stroke();ox.restore()}
  else if(T=='brush'||T=='eraser'){stroke(drag.last,p);drag.last=p}
  else if(drag.xf){const f=drag.xf,ax=f.i==0||f.i==3?f.x+f.w:f.x,ay=f.i<2?f.y+f.h:f.y;let w=Math.abs(p.x-ax),h=Math.abs(p.y-ay);if(!e.shiftKey){const s=Math.max(w/f.w,h/f.h);w=f.w*s;h=f.h*s}w=Math.max(4,w);h=Math.max(4,h);A.c=rs(f.o,w,h);A.x=Math.round(f.i==0||f.i==3?ax-w:ax);A.y=Math.round(f.i<2?ay-h:ay);render();ovr()}
  else if(T=='move'||drag.mv){if(!drag.ls)drag.ls=[...new Set([...SELL,...(A.isGroup?L.filter(x=>x.inGroup===A.id):[])])].filter(l=>l!==A&&!l.lock).map(l=>[l,l.x,l.y]);A.x=Math.round(drag.l.x+p.x-drag.s.x);A.y=Math.round(drag.l.y+p.y-drag.s.y);drag.ls.forEach(([l,x,y])=>{l.x=x+Math.round(p.x-drag.s.x);l.y=y+Math.round(p.y-drag.s.y)});render();ovr()}
- else{ovr();drag.e=p;if(T=='lasso'){(drag.pts=drag.pts||[drag.s]).push(p);ox.save();ox.shadowColor='#000';ox.shadowBlur=2;ox.lineWidth=Math.max(1,1/V.s);ox.setLineDash([5,4]);ox.strokeStyle='#fff';ox.beginPath();drag.pts.forEach((q,i)=>i?ox.lineTo(q.x,q.y):ox.moveTo(q.x,q.y));ox.stroke();ox.restore()}else if(T=='sel'||T=='esel'){ox.save();ox.shadowColor='#000';ox.shadowBlur=2;ox.lineWidth=Math.max(1,1/V.s);ox.setLineDash([5,4]);ox.strokeStyle='#fff';ox.beginPath();selPath(ox,drag.s,p);ox.stroke();ox.restore()}else if(T=='crop'){ox.save();ox.fillStyle='#0008';ox.fillRect(0,0,D.w,D.h);ox.clearRect(drag.s.x,drag.s.y,p.x-drag.s.x,p.y-drag.s.y);ox.setLineDash([6,4]);ox.strokeStyle='#fff';ox.strokeRect(drag.s.x,drag.s.y,p.x-drag.s.x,p.y-drag.s.y);ox.restore()}else shape(ox,drag.s,p,0,0)}};
+ else{ovr();drag.e=p;if(T=='lasso'){(drag.pts=drag.pts||[drag.s]).push(p);ox.save();ox.shadowColor='#000';ox.shadowBlur=2;ox.lineWidth=Math.max(1,1/V.s);ox.setLineDash([5,4]);ox.strokeStyle='#fff';ox.beginPath();drag.pts.forEach((q,i)=>i?ox.lineTo(q.x,q.y):ox.moveTo(q.x,q.y));ox.stroke();ox.restore()}else if(T=='sel'||T=='esel'){ox.save();ox.shadowColor='#000';ox.shadowBlur=2;ox.lineWidth=Math.max(1,1/V.s);ox.setLineDash([5,4]);ox.strokeStyle='#fff';ox.beginPath();selPath(ox,drag.s,p,drag.mod={sh:e.shiftKey,al:e.altKey});ox.stroke();ox.restore()}else if(T=='crop'){ox.save();ox.fillStyle='#0008';ox.fillRect(0,0,D.w,D.h);ox.clearRect(drag.s.x,drag.s.y,p.x-drag.s.x,p.y-drag.s.y);ox.setLineDash([6,4]);ox.strokeStyle='#fff';ox.strokeRect(drag.s.x,drag.s.y,p.x-drag.s.x,p.y-drag.s.y);ox.restore()}else shape(ox,drag.s,p,0,0)}};
 st.onpointerup=e=>{if(!drag)return;const d=drag;drag=null;if(d.pan)return;if(NT.has(T)){newUp(d,pt(e),e);return}const p=d.e||pt(e);bk=null;ovr();
  if(d.xf||d.mv){push();ovr();return}
+ if(T=='qsel'){qFinish();return}
  if(T=='heal'){if(d.pts){heal(A,d.pts,+sz.value/2);push();render()}return}
- if(T=='sel'||T=='esel'){if(d.e&&Math.abs(p.x-d.s.x)>1)comb(mkm(g=>{g.beginPath();selPath(g,d.s,p);g.fill()}),d.md);else selOp.none();return}
- if(T=='lasso'){if(d.pts&&d.pts.length>2)comb(mkm(g=>{g.beginPath();d.pts.forEach((q,i)=>i?g.lineTo(q.x,q.y):g.moveTo(q.x,q.y));g.closePath();g.fill()}),d.md);else selOp.none();return}
+ if(T=='sel'||T=='esel'){if(d.msel){SEL.e=null;ovr();return}if(d.e&&Math.abs(p.x-d.s.x)>1){d.mod={sh:e.shiftKey,al:e.altKey};comb(featherM(mkm(g=>{g.beginPath();selPath(g,d.s,p,d.mod);g.fill()}),$('#sfea').value),d.md)}else if(!d.inside)selOp.none();return}
+ if(T=='lasso'){if(d.msel){SEL.e=null;ovr();return}if(d.pts&&d.pts.length>2)comb(featherM(mkm(g=>{g.beginPath();d.pts.forEach((q,i)=>i?g.lineTo(q.x,q.y):g.moveTo(q.x,q.y));g.closePath();g.fill()}),$('#sfea').value),d.md);else if(!d.inside)selOp.none();return}
 
  if(T=='rect'||T=='ellipse'||T=='line'){if(d.e){if(SEL)bk=cl(A.c);shape(A.c.getContext('2d'),d.s,p,A.x,A.y);clipSel();bk=null;push();render()}}
  else if(T=='crop'&&d.e){const x=Math.round(Math.min(d.s.x,p.x)),y=Math.round(Math.min(d.s.y,p.y)),w=Math.round(Math.abs(p.x-d.s.x)),h=Math.round(Math.abs(p.y-d.s.y));
@@ -1009,12 +1023,19 @@ function modal(msg,def,mode,cb){const o=document.createElement('div');o.id='dlg2
 const askBox=(m,d,cb)=>modal(m,d,'ask',cb),confirmBox=(m,cb)=>modal(m,'','conf',cb),msgBox=m=>modal(m,'','msg');
 let TA=null;
 function qstep(p){if(p.x<0||p.y<0||p.x>=D.w||p.y>=D.h)return;const r=Math.max(2,sz.value/2|0),bx=Math.max(0,p.x-r|0),by=Math.max(0,p.y-r|0),bw=Math.min(D.w,p.x+r|0)-bx,bh=Math.min(D.h,p.y+r|0)-by;if(bw<1||bh<1)return;
- const d=drag.im.data,W=D.w,t=+tol.value*4,o=new ImageData(bw,bh);
- /* acuan = rata-rata warna di dalam lingkaran kuas (bukan satu piksel di titik kursor) */
- let sr=0,sg=0,sb=0,n=0;for(let y=0;y<bh;y++)for(let x=0;x<bw;x++){const dx=bx+x-p.x,dy=by+y-p.y;if(dx*dx+dy*dy>r*r)continue;const i=((by+y)*W+bx+x)*4;sr+=d[i];sg+=d[i+1];sb+=d[i+2];n++}
+ const d=drag.im.data,W=D.w,t=+tol.value*4,r2=r*r;
+ let sr=0,sg=0,sb=0,n=0;for(let y=0;y<bh;y++)for(let x=0;x<bw;x++){const dx=bx+x-p.x,dy=by+y-p.y;if(dx*dx+dy*dy>r2)continue;const i=((by+y)*W+bx+x)*4;sr+=d[i];sg+=d[i+1];sb+=d[i+2];n++}
  if(!n)return;const mr=sr/n,mg=sg/n,mb=sb/n;
- for(let y=0;y<bh;y++)for(let x=0;x<bw;x++){const dx=bx+x-p.x,dy=by+y-p.y;if(dx*dx+dy*dy>r*r)continue;const i=((by+y)*W+bx+x)*4;if(Math.abs(d[i]-mr)+Math.abs(d[i+1]-mg)+Math.abs(d[i+2]-mb)<=t){const j=(y*bw+x)*4;o.data[j]=76;o.data[j+1]=141;o.data[j+2]=255;o.data[j+3]=255}}
+ const okp=(x,y)=>{const dx=bx+x-p.x,dy=by+y-p.y;if(dx*dx+dy*dy>r2)return false;const i=((by+y)*W+bx+x)*4;return Math.abs(d[i]-mr)+Math.abs(d[i+1]-mg)+Math.abs(d[i+2]-mb)<=t};
+ /* hanya piksel yang BERSAMBUNG dengan pusat kuas */
+ const vis=new Uint8Array(bw*bh),st=[],cx0=Math.max(0,Math.min(bw-1,Math.round(p.x-bx))),cy0=Math.max(0,Math.min(bh-1,Math.round(p.y-by))),sr2=Math.max(1,r*.35);
+ for(let y=0;y<bh;y++)for(let x=0;x<bw;x++){const dx=x-cx0,dy=y-cy0;if(dx*dx+dy*dy<=sr2*sr2&&okp(x,y)){vis[y*bw+x]=1;st.push(x,y)}}
+ while(st.length){const y=st.pop(),x=st.pop();for(const[ax,ay]of[[x-1,y],[x+1,y],[x,y-1],[x,y+1]]){if(ax<0||ay<0||ax>=bw||ay>=bh)continue;const k=ay*bw+ax;if(vis[k]||!okp(ax,ay))continue;vis[k]=1;st.push(ax,ay)}}
+ const o=new ImageData(bw,bh);for(let k=0;k<bw*bh;k++)if(vis[k]){o.data[k*4]=76;o.data[k*4+1]=141;o.data[k*4+2]=255;o.data[k*4+3]=255}
  const c=mk(bw,bh);c.getContext('2d').putImageData(o,0,0);const g=SEL.m.getContext('2d');g.globalCompositeOperation=drag.md=='sub'?'destination-out':'source-over';g.drawImage(c,bx,by);g.globalCompositeOperation='source-over';SEL.e=null}
+/* rapikan hasil Quick Selection: tutup lubang kecil, haluskan tepi, anti-alias */
+function qFinish(){if(!SEL)return;const w=D.w,h=D.h;let a=mAlpha(SEL.m);for(let i=0;i<a.length;i++)a[i]=a[i]>127?255:0;a=fillSmallHoles(a,w,h,60);a=smoothA(a,w,h,1.4);a=Uint8ClampedArray.from(gaussF(Float32Array.from(a),w,h,.7,1));SEL={m:aMask(a)};ovr()}
+function fillSmallHoles(a,w,h,maxA){const lab=new Uint8Array(w*h),o=new Uint8ClampedArray(a),st=[];for(let s0=0;s0<w*h;s0++){if(a[s0]>127||lab[s0])continue;lab[s0]=1;st.push(s0);const cells=[s0];let edge=false;while(st.length){const j=st.pop(),x=j%w,y=(j/w)|0;if(!x||!y||x==w-1||y==h-1)edge=true;for(const k of[x>0?j-1:-1,x<w-1?j+1:-1,y>0?j-w:-1,y<h-1?j+w:-1]){if(k<0||a[k]>127||lab[k])continue;lab[k]=1;if(cells.length<=maxA+1)cells.push(k);st.push(k)}}if(!edge&&cells.length<=maxA)for(const c of cells)o[c]=255}return o}
 function heal(l,pts,r){const c=l.c,g=c.getContext('2d'),W=c.width,Hh=c.height,mc=mk(W,Hh),mg=mc.getContext('2d'),z=pts[pts.length-1];mg.strokeStyle='#000';mg.lineWidth=Math.max(2,r*2);mg.lineCap=mg.lineJoin='round';mg.beginPath();pts.forEach((q,i)=>{const x=q.x-l.x,y=q.y-l.y;i?mg.lineTo(x,y):mg.moveTo(x,y)});mg.lineTo(z.x-l.x+.01,z.y-l.y);mg.stroke();
  let x0=W,y0=Hh,x1=0,y1=0;pts.forEach(q=>{x0=Math.min(x0,q.x-l.x);y0=Math.min(y0,q.y-l.y);x1=Math.max(x1,q.x-l.x);y1=Math.max(y1,q.y-l.y)});
  x0=Math.max(0,Math.floor(x0-r-3));y0=Math.max(0,Math.floor(y0-r-3));x1=Math.min(W,Math.ceil(x1+r+3));y1=Math.min(Hh,Math.ceil(y1+r+3));const w=x1-x0,h=y1-y0;if(w<2||h<2)return;
@@ -1052,7 +1073,7 @@ const rng=(l,id,a,b)=>`<label class="ol">${l}<input type="range" data-bind="${id
 const clr=`<label class="ol">Warna<input type="color" class="cs" data-bind="#col"></label>`;
 const BRQ='<circle cx="14" cy="9" r="5" stroke-dasharray="2.5 2.5"/><path d="M3 20l7-7M10 13l2 2"/>';
 const RCT='<rect x="3" y="4" width="14" height="12" stroke-dasharray="3 2.5"/>';
-const MI=base=>`<span class="og">`+[['new','Seleksi baru',''],['add','Tambah ke seleksi','<path d="M18 15v6M15 18h6"/>'],['sub','Kurangi dari seleksi','<path d="M15 18h6"/>']].map(([m,t,x])=>`<button class="ib" data-mode="${m}" title="${t}">${oic(base+x,20)}</button>`).join('')+'</span>';
+const MI=base=>`<span class="og">`+[['new','Seleksi baru',''],['add','Tambah ke seleksi','<path d="M18 15v6M15 18h6"/>'],['sub','Kurangi dari seleksi','<path d="M15 18h6"/>'],['int','Irisan dengan seleksi (Shift+Alt)','<path d="M15.5 15.5l5 5M20.5 15.5l-5 5"/>']].map(([m,t,x])=>`<button class="ib" data-mode="${m}" title="${t}">${oic(base+x,20)}</button>`).join('')+'</span>';
 const MI2=base=>`<span class="og">`+[['add','Tambah ke seleksi (+)','<path d="M18 15v6M15 18h6"/>'],['sub','Kurangi dari seleksi (−)','<path d="M15 18h6"/>']].map(([m,t,x])=>`<button class="ib" data-mode="${m}" title="${t}">${oic(base+x,20)}</button>`).join('')+'</span>';
 const OBJI='<rect x="3" y="4" width="12" height="11" stroke-dasharray="3 2.5"/><path d="M12 10l7 3-3 1.5-1.5 3z"/>';
 const pk=(w,t)=>`<button class="ib pk" data-pop="${w}" title="${t}">${oic('<path d="M20 4l-9 9M9 14c-2 0-4 1-4 4 0 1-1 2-2 2 3 1 8 1 8-4"/>',20)}<small data-szl></small>${oic('<path d="M6 9l6 6 6-6"/>',12)}</button>`;
@@ -1062,10 +1083,10 @@ const FONTS=[...fam.options].map(o=>o.value);
 const BARS={
  move:()=>hint('Seret untuk memindahkan layer atau isi seleksi')+SEP+['#bFH|⇋ Balik H','#bFV|⇅ Balik V','#bRot|⟳ Putar 90°'].map(x=>{const[a,b]=x.split('|');return`<button class="ob" data-click="${a}">${b}</button>`}).join(''),
  xf:()=>`<label class="ol">Skala<input type="number" class="nb" data-bind="#sc" min="1" max="800">%</label><button class="ob" data-click="#xL">Skala layer</button><button class="ob" data-click="#xD">Skala gambar</button><button class="ob" data-click="#xF">Pas kanvas</button>`+SEP+hint('Tarik sudut layer · Shift = bebas'),
- sel:()=>MI(RCT)+SELX+SEP+hint('Shift = tambah · Alt = kurangi'),
- esel:()=>MI(RCT)+SELX+SEP+hint('Shift = tambah · Alt = kurangi'),
- lasso:()=>MI(RCT)+SELX+SEP+hint('Shift = tambah · Alt = kurangi'),
- wand:()=>MI(RCT)+SEP+rng('Toleransi','#tol',0,100)+SELX,
+ sel:()=>MI(RCT)+SEP+`<label class="ol" title="Feather (px): tepi seleksi dilembutkan">Feather<input type="number" class="nb" data-bind="#sfea" min="0" max="250">px</label>`+SELX+SEP+hint('Shift = tambah · Alt = kurangi · Shift+Alt = irisan · saat menyeret: Shift = persegi, Alt = dari tengah · seret di dalam seleksi = geser seleksi'),
+ esel:()=>MI(RCT)+SEP+`<label class="ol" title="Feather (px): tepi seleksi dilembutkan">Feather<input type="number" class="nb" data-bind="#sfea" min="0" max="250">px</label>`+SELX+SEP+hint('Shift = tambah · Alt = kurangi · Shift+Alt = irisan · saat menyeret: Shift = lingkaran, Alt = dari tengah · seret di dalam seleksi = geser seleksi'),
+ lasso:()=>MI(RCT)+SEP+`<label class="ol" title="Feather (px): tepi seleksi dilembutkan">Feather<input type="number" class="nb" data-bind="#sfea" min="0" max="250">px</label>`+SELX+SEP+hint('Shift = tambah · Alt = kurangi · Shift+Alt = irisan · seret di dalam seleksi = geser seleksi'),
+ wand:()=>MI(RCT)+SEP+rng('Toleransi','#tol',0,100)+`<label class="ol" title="Feather (px): tepi seleksi dilembutkan">Feather<input type="number" class="nb" data-bind="#sfea" min="0" max="250">px</label><label class="ol" title="Hanya piksel yang bersambung dengan titik klik">Contiguous<input type="checkbox" data-bind="#wcont"></label><label class="ol" title="Contoh warna dari semua layer (mati = hanya layer aktif)">Semua layer<input type="checkbox" data-bind="#wall"></label><label class="ol" title="Tepi seleksi dihaluskan">Anti-alias<input type="checkbox" data-bind="#waa"></label>`+SELX,
  qsel:()=>pk('qsel','Brush Picker')+MI2(BRQ)+SELX+SEP+hint('Klik = sebar otomatis · Seret = kuas · Tahan Ctrl = sementara mode lawan (+ ⇄ −)'),
  osel:()=>MI(OBJI)+SEP+`<label class="ol">Mode<select data-osm><option value="rect" ${OSM=='rect'?'selected':''}>Rectangle</option><option value="lasso" ${OSM=='lasso'?'selected':''}>Lasso</option></select></label>`+SELX+SEP+hint('Seret kotak/lasso di sekeliling objek · Klik = AI (butuh API key) · Ctrl = balik + ⇄ −'),
  crop:()=>hint('Seret pada kanvas untuk memilih area crop, lalu konfirmasi'),
@@ -1565,8 +1586,8 @@ function focusPanel(){if(!A)return;const old=SEL,ent={id:'fa',name:'Focus Area',
   const bl=gaussF(g,w,h,Math.max(2,Math.min(w,h)/80),1),srt=Float32Array.from(bl).sort(),p99=srt[Math.floor(srt.length*.99)]||1,t=(100-ent.p.r)/100*.7;let m=new Uint8ClampedArray(w*h);for(let i=0;i<w*h;i++)m[i]=bl[i]/p99>t?255:0;
   if(ent.p.s>0)m=smoothA(m,w,h,ent.p.s);m=fillHoles(m,w,h);SEL={m:aMask(m)};ovr()};
  openPanel({title:'Focus Area',mode:'fixed',entries:[ent],pv,cancel:()=>{SEL=old;ovr()},ok:()=>ovr()})}
-function maskPanel(){if(!SEL)return toast('Buat seleksi dulu');const base=cl(SEL.m),ent={id:'sm',name:'Select and Mask',params:[P('s','Smooth (px)',0,40,0),P('f','Feather (px)',0,100,0),P('e','Shift Edge (px)',-50,50,0)],on:true,p:{s:0,f:0,e:0}};
- const pv=st=>{if(!st.pv){SEL={m:cl(base)};ovr();return}const w=D.w,h=D.h;let a=mAlpha(base);const p=ent.p;if(p.e>0)a=dil(a,w,h,p.e);else if(p.e<0)a=ero(a,w,h,-p.e);if(p.s>0)a=smoothA(a,w,h,p.s);if(p.f>0)a=Uint8ClampedArray.from(gaussF(Float32Array.from(a),w,h,p.f/2,1));SEL={m:aMask(a)};ovr()};
+function maskPanel(){if(!SEL)return toast('Buat seleksi dulu');const base=cl(SEL.m),ent={id:'sm',name:'Select and Mask',params:[P('s','Smooth (px)',0,40,0),P('f','Feather (px)',0,100,0),P('e','Shift Edge (px)',-50,50,0),P('c','Contrast (%)',0,100,0)],on:true,p:{s:0,f:0,e:0,c:0}};
+ const pv=st=>{if(!st.pv){SEL={m:cl(base)};ovr();return}const w=D.w,h=D.h;let a=mAlpha(base);const p=ent.p;if(p.e>0)a=dil(a,w,h,p.e);else if(p.e<0)a=ero(a,w,h,-p.e);if(p.s>0)a=smoothA(a,w,h,p.s);if(p.f>0)a=Uint8ClampedArray.from(gaussF(Float32Array.from(a),w,h,p.f/2,1));if(p.c>0){const k=1+p.c/12;a=a.map(v=>(v-127.5)*k+127.5)}SEL={m:aMask(a)};ovr()};
  openPanel({title:'Select and Mask',mode:'fixed',entries:[ent],pv,cancel:()=>{SEL={m:cl(base)};ovr()},ok:()=>ovr()})}
 function reselect(){if(!LASTSEL)return toast('Tidak ada seleksi sebelumnya');SEL={m:cl(LASTSEL)};ovr()}
 const sn0=selOp.none;selOp.none=()=>{if(SEL){LASTSEL=cl(SEL.m)}sn0()};$('#sNone').onclick=()=>selOp.none();
