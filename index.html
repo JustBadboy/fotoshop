@@ -1963,11 +1963,28 @@ const css=`#gb{position:fixed;z-index:45;display:none;flex-wrap:wrap;align-items
 #gb .gg{padding:7px 8px;opacity:.85}#gb .gx{margin-left:auto;padding:3px 8px;border:0;background:none;color:var(--m);font-size:16px}
 #gb button:disabled,#gb input:disabled{opacity:.55;cursor:progress}
 #gb .sp{width:13px;height:13px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:gbs .7s linear infinite}
-@keyframes gbs{to{transform:rotate(360deg)}}`;
+@keyframes gbs{to{transform:rotate(360deg)}}
+#gb .r0{display:none;align-items:center;gap:4px;flex-wrap:nowrap;width:100%}
+#gb.selm{width:auto;max-width:calc(100vw - 16px);padding:6px;gap:6px}
+#gb.selm .r0{display:flex}#gb.selm .r2{display:none}#gb.selm .r1{display:none}
+#gb.selm.pr .r1,#gb.selm.busy .r1{display:flex;min-width:min(420px,calc(100vw - 40px))}
+#gb .r0 button{padding:6px 9px;border-radius:8px}
+#gb .r0 .pl{border:1px solid var(--b);background:var(--bg)}
+#gb .r0 .ib{border-color:transparent;background:transparent;padding:6px 7px}
+#gb .r0 .ib:hover,#gb .r0 .pl:hover{border-color:var(--a)}
+#gb .r0 .ib.open{background:var(--a);color:#fff;border-color:var(--a)}
+#gb .r0 .sep{width:1px;height:20px;background:var(--b);margin:0 3px;flex:none}
+#gb .r0 .cv{font-size:9px;opacity:.7;margin-left:-3px}
+#gb .r0 .sp2{flex:1;min-width:6px}
+.gbm{position:fixed;z-index:60;min-width:210px;background:var(--p);color:var(--t);border:1px solid var(--b);border-radius:8px;box-shadow:0 8px 28px #0009;padding:4px;display:flex;flex-direction:column;font:13px system-ui,sans-serif}
+.gbm button{text-align:left;border:0;background:none;padding:7px 12px;border-radius:5px;font-size:13px;color:var(--t);cursor:pointer}
+.gbm button:hover{background:var(--a);color:#fff}.gbm hr{border:0;border-top:1px solid var(--b);margin:4px 0;width:100%}
+.gbm .gh{padding:5px 12px;font-size:11px;color:var(--m);text-transform:uppercase;letter-spacing:.05em}`;
 const stl=document.createElement('style');stl.textContent=css;document.head.append(stl);
 const SPARK='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4l1.6 4.4L16 10l-4.4 1.6L10 16l-1.6-4.4L4 10l4.4-1.6z"/><path d="M18 3v4M16 5h4M18 15v6M15 18h6"/></svg>';
 const GB=document.createElement('div');GB.id='gb';
 GB.innerHTML=`<div class="r1"><input type="text" placeholder="Describe what to generate…" maxlength="500" aria-label="Prompt generate"><button class="go" title="Generate (Enter)"><i style="display:flex">${SPARK}</i><span>Generate</span></button><button class="gg" title="Pengaturan AI (API key & model)" aria-label="Pengaturan AI">⚙</button></div>
+<div class="r0"><button class="pl" data-a="gfill" title="Generative fill: isi seleksi dengan gambar AI dari deskripsi teks"><i style="display:flex">${SPARK}</i><span>Generative fill</span></button><button class="pl" data-a="remove" title="Remove: hapus objek di dalam seleksi dan isi dari sekitarnya"><i style="display:flex"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg></i><span>Remove</span></button><span class="sep"></span><button class="ib" data-a="refine" title="Select and Mask: haluskan tepi seleksi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/></svg></button><button class="ib" data-a="xform" title="Transform Selection: ubah ukuran/posisi seleksi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" stroke-dasharray="3 2"/><rect x="2" y="2" width="4" height="4" fill="currentColor"/><rect x="18" y="2" width="4" height="4" fill="currentColor"/><rect x="2" y="18" width="4" height="4" fill="currentColor"/><rect x="18" y="18" width="4" height="4" fill="currentColor"/></svg></button><button class="ib" data-a="mask" title="Buat Layer Mask dari seleksi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="5"/></svg></button><button class="ib" data-a="fill" title="Fill: isi seleksi dengan warna / pattern"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 13h15"/><path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z"/></svg><span class="cv">▾</span></button><button class="ib" data-a="adj" title="Adjustment layer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg></button><button class="ib" data-a="more" title="Opsi lain"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="19" cy="12" r="1.2" fill="currentColor"/></svg></button><span class="sp2"></span><button class="pl" data-a="desel" title="Batal pilih (Ctrl+D)">Deselect</button></div>
 <div class="r2"><button class="ch" data-a="subj" title="Seleksi subjek otomatis (lokal, tanpa AI)">Select subject</button><button class="ch ns-hide" data-a="aisel" title="Opsional: deteksi subjek dengan AI Gemini (butuh API key)">Select subject (AI)</button><button class="ch ns-hide" data-a="inv" title="Balik seleksi (Ctrl+Shift+I)">Inverse</button><button class="ch ns-hide" data-a="caf" title="Isi area seleksi dari sekitarnya (lokal, tanpa AI/API)">Content-aware fill</button><button class="ch" data-a="rmbg" title="Hapus latar dari layer aktif (otomatis memilih subjek jika belum ada seleksi)">Remove background</button><button class="ch ns-hide" data-a="desel" title="Batal pilih (Ctrl+D)">Deselect</button><button class="gx" data-a="hide" title="Sembunyikan bar">×</button></div>`;
 document.body.append(GB);dragify(GB,GB,{onEnd:(l,t)=>{GB.userPos={l,t}}});
 const inp=GB.querySelector('input'),go=GB.querySelector('.go'),gg=GB.querySelector('.gg'),chips=[...GB.querySelectorAll('[data-a]')];
@@ -1976,19 +1993,71 @@ let busy=false,tmr=0,retry=0,dis=false,lastSel=null;
 inp.addEventListener('keydown',e=>{e.stopPropagation();if(e.key=='Enter'){e.preventDefault();gen()}else if(e.key=='Escape')inp.blur()});
 go.onclick=gen;gg.onclick=()=>aiSettings();
 const ACT={subj:()=>{if(cur&&A)subjLocal()},aisel:()=>run('',subjAI),inv:()=>{if(SEL)selOp.inv()},desel:()=>selOp.none(),hide:()=>{dis=true;pos()},caf:()=>run('Mengisi…',cafRun),rmbg:()=>run('Memproses…',rmbgRun)};window.FSACT=ACT;
-chips.forEach(b=>b.onclick=()=>{if(!busy&&cur)ACT[b.dataset.a]()});
+chips.forEach(b=>b.onclick=e=>{if(!busy&&cur)ACT[b.dataset.a](e,b)});
+
+/* --- Bar seleksi gaya Photoshop: Generative fill, Remove, Refine, Transform, Mask, Fill, Adjustment, More, Deselect --- */
+let gbm=null;
+function gbmClose(){if(gbm){gbm.remove();gbm=null}GB.querySelectorAll('.ib.open').forEach(b=>b.classList.remove('open'));removeEventListener('pointerdown',gbmOut,true);removeEventListener('keydown',gbmKey,true)}
+function gbmOut(e){if(gbm&&!gbm.contains(e.target))gbmClose()}
+function gbmKey(e){if(e.key=='Escape'){e.stopPropagation();gbmClose()}}
+function gbMenu(btn,items){const was=btn.classList.contains('open');gbmClose();if(was)return;
+ const m=document.createElement('div');m.className='gbm';
+ items.forEach(it=>{if(it==='-'){m.append(document.createElement('hr'));return}
+  if(it.h){const h=document.createElement('div');h.className='gh';h.textContent=it.h;m.append(h);return}
+  const b=document.createElement('button');b.textContent=it[0];b.onclick=ev=>{ev.stopPropagation();gbmClose();setTimeout(()=>it[1](),0)};m.append(b)});
+ ['pointerdown','pointerup','wheel'].forEach(t=>m.addEventListener(t,e=>e.stopPropagation()));
+ document.body.append(m);gbm=m;btn.classList.add('open');
+ const r=btn.getBoundingClientRect(),w=m.offsetWidth,h=m.offsetHeight;
+ let top=r.bottom+4;if(top+h>innerHeight-8)top=Math.max(8,r.top-h-4);
+ m.style.left=Math.max(8,Math.min(innerWidth-w-8,r.left))+'px';m.style.top=top+'px';
+ setTimeout(()=>{addEventListener('pointerdown',gbmOut,true);addEventListener('keydown',gbmKey,true)},0)}
+function fillSel(style,label){if(!cur||!A)return toast('Pilih layer dulu');if(!SEL)return toast('Buat seleksi dulu');
+ const t=mk(D.w,D.h),g=t.getContext('2d');g.fillStyle=typeof style=='function'?style(g):style;g.fillRect(0,0,D.w,D.h);
+ g.globalCompositeOperation='destination-in';g.drawImage(SEL.m,0,0);
+ A.c.getContext('2d').drawImage(t,-A.x,-A.y);push();render();ui();toast('Seleksi diisi: '+label+' (Ctrl+Z untuk batal)')}
+function fillMenu(btn){
+ gbMenu(btn,[
+  ['Content-aware Fill…',()=>run('Mengisi…',cafRun)],
+  ['Fill Color…',()=>{const i=document.createElement('input');i.type='color';i.value=col.value;i.style.cssText='position:fixed;left:-99px;top:0;opacity:0';document.body.append(i);
+    i.addEventListener('change',()=>{fillSel(i.value,'warna '+i.value);i.remove()});i.addEventListener('blur',()=>setTimeout(()=>i.remove(),400));i.click()}],
+  ['Fill Pattern…',()=>{if(!PATS.length)return toast('Belum ada pattern. Buat dulu lewat Edit → Define Pattern');
+    gbMenu(btn,[{h:'Pattern'},...PATS.map(pt=>[pt.n,()=>fillSel(g=>g.createPattern(pt.c,'repeat'),'pattern '+pt.n)])])}],
+  '-',
+  ['Foreground Color',()=>fillSel(col.value,'foreground')],
+  ['Background Color',()=>fillSel(col2.value,'background')],
+  ['Black',()=>fillSel('#000','hitam')],['White',()=>fillSel('#fff','putih')],['50% Gray',()=>fillSel('#808080','abu 50%')]])}
+function aiAvail(){const prov=LS.get('fs_gprov')||'auto';return (prov!='cf'&&!!gKey())||((prov=='cf'||prov=='auto')&&cfOn())}
+function removeAct(){if(!SEL)return toast('Buat seleksi dulu');
+ if(aiAvail())gen({rm:1});else run('Mengisi…',cafRun)}
+function gfillAct(){if(!SEL)return toast('Buat seleksi dulu');
+ if(!GB.classList.contains('pr')){GB.classList.add('pr');sched(0);setTimeout(()=>inp.focus(),60)}
+ else if(inp.value.trim())gen();else inp.focus()}
+function moreMenu(btn){gbMenu(btn,[
+ ['Select Subject',()=>{if(cur&&A)subjLocal()}],['Inverse Selection',()=>{if(SEL)selOp.inv()}],'-',
+ ['Feather…',modAsk('Radius feather (px)','feather')],['Expand…',modAsk('Perluas (px)','expand')],['Contract…',modAsk('Kecilkan (px)','contract')],['Smooth…',modAsk('Radius smooth (px)','smooth')],['Border…',modAsk('Lebar border (px)','border')],'-',
+ ['Fill… (dialog)',()=>edFill()],['Stroke…',()=>edStroke()],['Save Selection…',()=>saveSel()],'-',
+ ['Remove Background',()=>run('Memproses…',rmbgRun)],['Sembunyikan bar',()=>{dis=true;pos()}]])}
+Object.assign(ACT,{
+ gfill:gfillAct,remove:removeAct,
+ refine:()=>{if(!SEL)return toast('Buat seleksi dulu');maskPanel()},
+ xform:()=>{if(!SEL)return toast('Buat seleksi dulu');setT('xsel')},
+ mask:()=>addLayerMask(),
+ fill:(e,b)=>fillMenu(b),
+ adj:(e,b)=>{const r=b.getBoundingClientRect();adjLayerMenu(r.left,r.top)},
+ more:(e,b)=>moreMenu(b)});
+
 
 function selBox(){const m=SEL.m,k=Math.min(1,256/Math.max(m.width,m.height)),c=mk(Math.max(1,Math.round(m.width*k)),Math.max(1,Math.round(m.height*k))),g=c.getContext('2d');g.drawImage(m,0,0,c.width,c.height);
  const d=g.getImageData(0,0,c.width,c.height).data;let x0=c.width,y0=c.height,x1=-1,y1=-1;
  for(let y=0;y<c.height;y++)for(let x=0;x<c.width;x++)if(d[(y*c.width+x)*4+3]>8){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}
  return x1<0?null:{x:x0/k,y:y0/k,w:(x1-x0+1)/k,h:(y1-y0+1)/k}}
-function canShow(){if(SEL!==lastSel){lastSel=SEL;if(SEL)dis=false}
+function canShow(){if(SEL!==lastSel){if(SEL&&!lastSel)GB.classList.remove('pr');lastSel=SEL;if(SEL)dis=false}
  if(!cur||document.body.classList.contains('home')||QM||dis||['xsel','crop','liq'].includes(T)||(T=='pen'&&!SEL))return false;
  return true}
 function pos(){if(!canShow()){if(!busy)GB.style.display='none';return}
  if(drag){if(retry++<20)sched(150);return}
  retry=0;const r=st.getBoundingClientRect(),b=SEL?selBox():null;
- GB.classList.toggle('nosel',!SEL);GB.classList.toggle('tool',!SEL&&!SELT.includes(T));GB.style.display='flex';
+ GB.classList.toggle('nosel',!SEL);GB.classList.toggle('selm',!!SEL);if(!SEL){GB.classList.remove('pr');gbmClose()}GB.classList.toggle('tool',!SEL&&!SELT.includes(T));GB.style.display='flex';
  const bw=GB.offsetWidth,bh=GB.offsetHeight;let left,top;
  if(b){const cx=r.left+V.x+(b.x+b.w/2)*V.s,bt=r.top+V.y+(b.y+b.h)*V.s,tp=r.top+V.y+b.y*V.s;
   left=Math.max(r.left+8,Math.min(r.right-bw-8,cx-bw/2));top=bt+14;if(top+bh>r.bottom-8)top=tp-bh-14;if(top<r.top+8)top=r.bottom-bh-16}
@@ -1996,7 +2065,7 @@ function pos(){if(!canShow()){if(!busy)GB.style.display='none';return}
  if(GB.userPos){left=GB.userPos.l;top=GB.userPos.t}GB.style.left=left+'px';GB.style.top=top+'px'}
 function sched(ms){clearTimeout(tmr);tmr=setTimeout(pos,ms==null?60:ms)}
 window.__gbTool=()=>{dis=false;pos()};
-function setBusy(v){busy=v;inp.disabled=go.disabled=v;chips.forEach(b=>b.disabled=v);go.querySelector('span').textContent=v?'Memproses…':'Generate';go.querySelector('i').innerHTML=v?'<span class="sp"></span>':SPARK}
+function setBusy(v){busy=v;GB.classList.toggle('busy',v);setTimeout(()=>sched(0),0);inp.disabled=go.disabled=v;chips.forEach(b=>b.disabled=v);go.querySelector(':scope>span').textContent=v?'Memproses…':'Generate';go.querySelector('i').innerHTML=v?'<span class="sp"></span>':SPARK}
 function run(label,fn){setBusy(true);setTimeout(async()=>{try{await fn()}catch(e){toast('Gagal: '+(e.message||e))}finally{setBusy(false);sched(0)}},30)}
 
 /* --- Segmentasi AI (Gemini): Select subject & klik-untuk-pilih-objek --- */
@@ -2085,7 +2154,7 @@ async function cafRun(){if(!SEL)return toast('Buat seleksi dulu');
  render();const src=mk(sw,sh),sg=src.getContext('2d');sg.imageSmoothingQuality='high';sg.drawImage(cv,X0,Y0,rw,rh,0,0,sw,sh);
  const mm=mk(sw,sh),mg=mm.getContext('2d');mg.drawImage(dil,X0,Y0,rw,rh,0,0,sw,sh);
  const sd=sg.getImageData(0,0,sw,sh).data,ma=mg.getImageData(0,0,sw,sh).data,hole=new Uint8Array(sw*sh);for(let i=0;i<hole.length;i++)hole[i]=ma[i*4+3]>60?1:0;
- const lbl=GB.querySelector('.go span'),px=await caFill(sd,sw,sh,hole,4,f=>{lbl.textContent='Mengisi '+Math.round(f*100)+'%'},performance.now()+25000);
+ const lbl=GB.querySelector('.go>span'),px=await caFill(sd,sw,sh,hole,4,f=>{lbl.textContent='Mengisi '+Math.round(f*100)+'%'},performance.now()+25000);
  if(cur!==doc)return toast('Dokumen berganti, hasil dibatalkan');
  const t=mk(sw,sh),tg=t.getContext('2d'),id=tg.createImageData(sw,sh);
  for(let i=0;i<sw*sh;i++){id.data[i*4]=px[i*3];id.data[i*4+1]=px[i*3+1];id.data[i*4+2]=px[i*3+2];id.data[i*4+3]=hole[i]?255:0}
@@ -2093,9 +2162,9 @@ async function cafRun(){if(!SEL)return toast('Buat seleksi dulu');
  addLayer('Content-aware fill',c);push();sync();ui();toast('Selesai – hasil di layer baru (Ctrl+Z untuk batal)')}
 
 /* --- Generate (Gemini) pada area seleksi --- */
-async function gen(){
+async function gen(o){
  if(busy||!cur)return;
- const prov=LS.get('fs_gprov')||'auto',N=Math.max(1,Math.min(6,+LS.get('fs_gn')||4)),pr=inp.value.trim(),doc=cur;
+ const prov=LS.get('fs_gprov')||'auto',N=Math.max(1,Math.min(6,+LS.get('fs_gn')||4)),pr=(o&&o.rm===1)?'':inp.value.trim(),doc=cur;
  const useG=prov=='gemini'||(prov=='auto'&&!!gKey()&&Date.now()>(window.__gskip||0));
  const isQ=m=>/quota|exhaust|rate.?limit|429|limit:\s*0/i.test(m||'');
  const finish=(layer,label,msg)=>{if(cur!==doc)return toast('Dokumen berganti, hasil AI dibatalkan');addLayer('AI: '+label.slice(0,24),layer);push();sync();ui();toast(msg)};
