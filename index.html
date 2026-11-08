@@ -1264,8 +1264,9 @@ function dragify(el,handle,opt){if(!el||!handle)return;handle.style.cursor='move
   const r=el.getBoundingClientRect();el.style.position='fixed';el.style.left=r.left+'px';el.style.top=r.top+'px';el.style.right='auto';el.style.bottom='auto';el.style.transform='none';
   const ox=e.clientX-r.left,oy=e.clientY-r.top;
   const mv=ev=>{const l=Math.max(0,Math.min(innerWidth-60,ev.clientX-ox)),t=Math.max(0,Math.min(innerHeight-30,ev.clientY-oy));el.style.left=l+'px';el.style.top=t+'px'};
-  const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up);if(opt&&opt.onEnd)opt.onEnd(parseFloat(el.style.left),parseFloat(el.style.top))};
-  addEventListener('pointermove',mv);addEventListener('pointerup',up)})}
+  const up=()=>{removeEventListener('pointermove',mv,true);removeEventListener('pointerup',up,true);removeEventListener('pointercancel',up,true);delete el.dataset.dragging;if(opt&&opt.onEnd)opt.onEnd(parseFloat(el.style.left),parseFloat(el.style.top))};
+  el.dataset.dragging='1';
+  addEventListener('pointermove',mv,true);addEventListener('pointerup',up,true);addEventListener('pointercancel',up,true)})}
 function openPanel(o){closePanel(true);const el=document.createElement('div');el.className='fp';
  el.innerHTML=`<div class="fh"><b>${o.title}</b><span class="fx" title="Tutup">×</span></div><div class="fb"></div><div class="ff"><label><input type="checkbox" class="fpv" checked> Pratinjau</label><span style="flex:1"></span><button class="ob fpc">Batal</button><button class="ob pri fpo">OK</button></div>`;
  const body=el.querySelector('.fb'),st={pv:true};let tm=0;
@@ -2054,7 +2055,7 @@ function selBox(){const m=SEL.m,k=Math.min(1,256/Math.max(m.width,m.height)),c=m
 function canShow(){if(SEL!==lastSel){if(SEL&&!lastSel)GB.classList.remove('pr');lastSel=SEL;if(SEL)dis=false}
  if(!cur||document.body.classList.contains('home')||QM||dis||['xsel','crop','liq'].includes(T)||(T=='pen'&&!SEL))return false;
  return true}
-function pos(){if(!canShow()){if(!busy)GB.style.display='none';return}
+function pos(){if(GB.dataset.dragging)return;if(!canShow()){if(!busy)GB.style.display='none';return}
  if(drag){if(retry++<20)sched(150);return}
  retry=0;const r=st.getBoundingClientRect(),b=SEL?selBox():null;
  GB.classList.toggle('nosel',!SEL);GB.classList.toggle('selm',!!SEL);if(!SEL){GB.classList.remove('pr');gbmClose()}GB.classList.toggle('tool',!SEL&&!SELT.includes(T));GB.style.display='flex';
