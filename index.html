@@ -881,8 +881,7 @@ st.onpointerup=e=>{if(!drag)return;const d=drag;drag=null;if(d.pan)return;if(NT.
  if(T=='lasso'){if(d.msel){SEL.e=null;ovr();return}if(d.pts&&d.pts.length>2)comb(featherM(mkm(g=>{g.beginPath();d.pts.forEach((q,i)=>i?g.lineTo(q.x,q.y):g.moveTo(q.x,q.y));g.closePath();g.fill()}),$('#sfea').value),d.md);else if(!d.inside)selOp.none();return}
 
  if(T=='rect'||T=='ellipse'||T=='line'){if(d.e){if(SEL)bk=cl(A.c);shape(A.c.getContext('2d'),d.s,p,A.x,A.y);clipSel();bk=null;push();render()}}
- else if(T=='crop'&&d.e){const x=Math.round(Math.min(d.s.x,p.x)),y=Math.round(Math.min(d.s.y,p.y)),w=Math.round(Math.abs(p.x-d.s.x)),h=Math.round(Math.abs(p.y-d.s.y));
-  if(w>4&&h>4)confirmBox(`Crop ke ${w}×${h}px?`,()=>{L.forEach(l=>{const n=mk(w,h);n.getContext('2d').drawImage(l.c,l.x-x,l.y-y);l.c=n;l.x=l.y=0});D.w=w;D.h=h;push();sync();fit()})}
+ // crop handled by newUp -> cropCommit/cropCancel
  else if(T=='brush'||T=='eraser'||T=='move')push()};
 /* handler wheel lama dihapus (bentrok dengan zoom Alt+scroll); lihat handler wheel baru di bawah */
 function loadImg(f,asNew){if(!f||!f.type.startsWith('image/'))return;const u=URL.createObjectURL(f),im=new Image();im.onload=()=>{
@@ -1681,13 +1680,13 @@ function cropBox(){if(CB&&CB.isConnected)return CB;CB=document.createElement('di
 const OVL={thirds:[33.333,66.667],grid:[16.667,33.333,50,66.667,83.333],golden:[38.2,61.8],diagonal:[],none:[]};
 function cropDraw(){const b=cropBox();if(T!='crop'||!cur||document.body.classList.contains('home')){b.style.display='none';return}
  if(!CR||CRdoc!==cur)cropReset();b.style.display='block';const s=1/V.s;Object.assign(b.style,{left:CR.x+'px',top:CR.y+'px',width:CR.w+'px',height:CR.h+'px',borderWidth:1.5*s+'px',boxShadow:CRO.sh?`0 0 0 99999px rgba(0,0,0,${CRO.shv/100})`:'none',margin:-1.5*s+'px 0 0 '+-1.5*s+'px'});
- b.querySelectorAll('.chd').forEach(h=>{const z=9*s;h.style.width=h.style.height=z+'px';h.style.borderWidth=s+'px';const k=h.className.split(' ')[1];h.style.left=k.includes('w')?-z/2+'px':k.includes('e')?'calc(100% - '+z/2+'px)':'calc(50% - '+z/2+'px)';h.style.top=k.includes('n')?-z/2+'px':k.includes('s')?'calc(100% - '+z/2+'px)':'calc(50% - '+z/2+'px)'});
+ b.querySelectorAll('.chd').forEach(h=>{const z=9*s;h.style.width=h.style.height=z+'px';h.style.borderWidth=s+'px';const k=h.className.split(' ')[1];h.style.left=k.includes('w')?-z/2+'px':k.includes('e')?'calc(100% - '+z/2+'px)':'calc(50% - '+z/2+'px)';h.style.top=k.includes('n')?-z/2+'px':k.includes('s')?'calc(100% - '+z/2+'px)':'calc(50% - '+z/2+'px)';const curMap={nw:'nwse-resize',n:'ns-resize',ne:'nesw-resize',e:'ew-resize',se:'nwse-resize',s:'ns-resize',sw:'nesw-resize',w:'ew-resize'};h.style.cursor=curMap[k]||'move';});;
  const L1=OVL[CRO.ov]||[],g=b.querySelector('.cg');g.innerHTML=L1.map(v=>`<line x1="${v}" y1="0" x2="${v}" y2="100"/><line x1="0" y1="${v}" x2="100" y2="${v}"/>`).join('')+(CRO.ov=='diagonal'?'<line x1="0" y1="0" x2="100" y2="100"/><line x1="100" y1="0" x2="0" y2="100"/>':'');
  const wi=document.querySelector('[data-cr=w]'),hi=document.querySelector('[data-cr=h]');if(wi&&document.activeElement!==wi)wi.placeholder=Math.round(CR.w);if(hi&&document.activeElement!==hi)hi.placeholder=Math.round(CR.h)}
 function cropDown(p,e){if(!CR||CRdoc!==cur)cropReset();const r=12/V.s,x0=CR.x,x1=CR.x+CR.w,y0=CR.y,y1=CR.y+CR.h,xm=(x0+x1)/2,ym=(y0+y1)/2;
  const hs=[[x0,y0,-1,-1],[xm,y0,0,-1],[x1,y0,1,-1],[x1,ym,1,0],[x1,y1,1,1],[xm,y1,0,1],[x0,y1,-1,1],[x0,ym,-1,0]],h=hs.find(q=>Math.abs(q[0]-p.x)<r&&Math.abs(q[1]-p.y)<r);
  drag.cr=h?{k:'rs',ix:h[2],iy:h[3],R:{...CR}}:(p.x>x0&&p.x<x1&&p.y>y0&&p.y<y1?{k:'mv',R:{...CR}}:{k:'new',R:null})}
-function cropMove(p){const c=drag.cr,s=drag.s,a=cropAsp();if(c.k=='mv'){CR={...c.R,x:c.R.x+p.x-s.x,y:c.R.y+p.y-s.y}}
+function cropMove(p){const c=drag.cr,s=drag.s,a=cropAsp();if(c.k=='rs'){st.style.cursor=c.ix&&c.iy?(c.ix*c.iy>0?'nwse-resize':'nesw-resize'):c.ix?'ew-resize':'ns-resize'}else if(c.k=='mv'){st.style.cursor='move'}if(c.k=='mv'){CR={...c.R,x:c.R.x+p.x-s.x,y:c.R.y+p.y-s.y}}
  else if(c.k=='new'){let w=p.x-s.x,h=p.y-s.y;if(a){if(Math.abs(w)/a>Math.abs(h))h=Math.sign(h||1)*Math.abs(w)/a;else w=Math.sign(w||1)*Math.abs(h)*a}CR={x:Math.min(s.x,s.x+w),y:Math.min(s.y,s.y+h),w:Math.max(4,Math.abs(w)),h:Math.max(4,Math.abs(h))}}
  else{const R=c.R;let x0=R.x,x1=R.x+R.w,y0=R.y,y1=R.y+R.h;if(c.ix<0)x0=Math.min(p.x,x1-4);if(c.ix>0)x1=Math.max(p.x,x0+4);if(c.iy<0)y0=Math.min(p.y,y1-4);if(c.iy>0)y1=Math.max(p.y,y0+4);
   if(a){let w=x1-x0,h=y1-y0;if(c.ix&&c.iy){if(w/a>h)h=w/a;else w=h*a;if(c.ix<0)x0=x1-w;else x1=x0+w;if(c.iy<0)y0=y1-h;else y1=y0+h}else if(c.ix){h=w/a;const cy0=(R.y+R.y+R.h)/2;y0=cy0-h/2;y1=cy0+h/2;if(c.ix<0)x0=x1-w;else x1=x0+w}else{w=h*a;const cx0=R.x+R.w/2;x0=cx0-w/2;x1=cx0+w/2;if(c.iy<0)y0=y1-h;else y1=y0+h}}
@@ -1995,8 +1994,9 @@ const CURS={eyedrop:CUR("<path d='M20 4l-3 3M15 5l4 4-8 8-4 1 1-4zM7 17l-3 3'/>"
 const RING=new Set(['brush','eraser','heal','clone','liq','qsel']);
 const brc=document.createElement('div');brc.id='brc';document.body.append(brc);let lastPE=null;
 function applyCursor(k){st.style.cursor=CURS[k]||'crosshair';if(!RING.has(k))brc.style.display='none'}
+function cropCursor(p){if(T!='crop'||!CR||!p)return false;const r=14/V.s,x0=CR.x,x1=CR.x+CR.w,y0=CR.y,y1=CR.y+CR.h,xm=(x0+x1)/2,ym=(y0+y1)/2;const hs=[[x0,y0,'nwse-resize'],[xm,y0,'ns-resize'],[x1,y0,'nesw-resize'],[x1,ym,'ew-resize'],[x1,y1,'nwse-resize'],[xm,y1,'ns-resize'],[x0,y1,'nesw-resize'],[x0,ym,'ew-resize']];for(const h of hs){if(Math.abs(h[0]-p.x)<r&&Math.abs(h[1]-p.y)<r){st.style.cursor=h[2];return true}}if(p.x>x0&&p.x<x1&&p.y>y0&&p.y<y1){st.style.cursor='move';return true}st.style.cursor='crosshair';return false}
 function ringAt(e){if(!e||!RING.has(T)||!cur||document.body.classList.contains('home')||(typeof sp!='undefined'&&sp)){brc.style.display='none';return}const d=Math.max(6,(+sz.value)*V.s);Object.assign(brc.style,{display:'block',width:d+'px',height:d+'px',left:e.clientX-d/2+'px',top:e.clientY-d/2+'px'})}
-st.addEventListener('pointermove',e=>{lastPE=e;ringAt(e)},true);st.addEventListener('pointerleave',()=>brc.style.display='none');
+st.addEventListener('pointermove',e=>{lastPE=e;ringAt(e);if(T=='crop'&&!drag&&cur&&!document.body.classList.contains('home'))cropCursor(pt(e))},true);st.addEventListener('pointerleave',()=>brc.style.display='none');
 st.addEventListener('pointerdown',()=>{if(T=='hand'||(typeof sp!='undefined'&&sp))st.style.cursor='grabbing'},true);addEventListener('pointerup',()=>{applyCursor(T)},true);
 sz.addEventListener('input',()=>ringAt(lastPE));
 /* ---- Scroll: zoom / geser ---- */
