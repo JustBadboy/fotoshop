@@ -827,10 +827,31 @@ function flood(l,sx,sy,color,t){const c=l.c,g=c.getContext('2d'),W=c.width,Hh=c.
  while(s.length){const y=s.pop(),x=s.pop(),p=y*W+x;if(seen[p]||!ok(p*4))continue;seen[p]=1;d[p*4]=rgb[0];d[p*4+1]=rgb[1];d[p*4+2]=rgb[2];d[p*4+3]=255;
   if(x>0)s.push(x-1,y);if(x<W-1)s.push(x+1,y);if(y>0)s.push(x,y-1);if(y<Hh-1)s.push(x,y+1)}
  g.putImageData(im,0,0)}
+/* ===== Auto-Select Layer: klik kanvas -> pilih layer teratas yang TIDAK terkunci & pikselnya TIDAK transparan di titik klik ===== */
+var AUTOSEL=true;
+function hitLayer(l,p){
+ if(!l.v||l.isGroup||l.lock||grpHidden(l)||(l.o!=null&&l.o<=0))return false;
+ const x=Math.floor(p.x-l.x),y=Math.floor(p.y-l.y);
+ if(x<0||y<0||x>=l.c.width||y>=l.c.height)return false;
+ try{
+  if(l.c.getContext('2d').getImageData(x,y,1,1).data[3]<=8)return false;
+  if(l.mask){const mx=Math.floor(p.x),my=Math.floor(p.y);
+   if(mx<0||my<0||mx>=l.mask.width||my>=l.mask.height)return false;
+   const m=l.mask.getContext('2d').getImageData(mx,my,1,1).data;if(m[0]*m[3]/255<8)return false}
+ }catch(err){return false}
+ return true}
+function autoPick(p,e){
+ for(let i=L.length-1;i>=0;i--){const l=L[i];
+  if(!hitLayer(l,p))continue;
+  if(l===A){if(!e.shiftKey)SELL.clear();return}
+  if(e.shiftKey){if(A)SELL.add(A);SELL.has(l)?SELL.delete(l):SELL.add(l)}else SELL.clear();
+  A=l;ui();return}
+ /* klik di area transparan / layer terkunci semua: layer aktif tidak diubah */}
+document.addEventListener('change',e=>{if(e.target&&e.target.id=='autoSelChk')AUTOSEL=e.target.checked});
 st.onpointerdown=e=>{st.setPointerCapture(e.pointerId);
  if(CRS&&e.button==0&&!sp){crsPick(pt(e));return}
  if(e.button==1||sp||T=='hand'){drag={pan:1,x:e.clientX,y:e.clientY,vx:V.x,vy:V.y};return}
- const p=pt(e);if(!A||(A.lock&&(T=='move'||T=='xf')))return;drag={s:p,last:p,l:{x:A.x,y:A.y},md:md(e)};
+ const p=pt(e);if(T=='move'&&e.button==0&&AUTOSEL&&!SEL)autoPick(p,e);if(!A||(A.lock&&(T=='move'||T=='xf')))return;drag={s:p,last:p,l:{x:A.x,y:A.y},md:md(e)};
  if(SEL&&(T=='brush'||T=='eraser'||T=='bucket'))bk=cl(A.c);
  if((T=='sel'||T=='esel'||T=='lasso')&&SEL&&drag.md=='new'){const px=p.x|0,py=p.y|0;if(px>=0&&py>=0&&px<D.w&&py<D.h&&SEL.m.getContext('2d').getImageData(px,py,1,1).data[3]>127){drag.inside=1;drag.msel=cl(SEL.m);drag.moved=0;return}}
  if(NT.has(T)){newDown(p,e)}else if(T=='move'&&SEL){addLayer('Dipindah',lift(1));SEL=null;ovr();drag.l={x:A.x,y:A.y}}
@@ -1092,7 +1113,7 @@ const SELX=SEP+['#sAll|Semua','#sNone|Batal pilih','#sInv|Balik','#sDel|Hapus is
 const AL=(v,p)=>`<button class="ib" data-fn="al" data-v="${v}" title="Rata ${v}">${oic(p)}</button>`;
 const FONTS=[...fam.options].map(o=>o.value);
 const BARS={
- move:()=>hint('Seret untuk memindahkan layer atau isi seleksi')+SEP+['#bFH|⇋ Balik H','#bFV|⇅ Balik V','#bRot|⟳ Putar 90°'].map(x=>{const[a,b]=x.split('|');return`<button class="ob" data-click="${a}">${b}</button>`}).join(''),
+ move:()=>`<label class="ob" title="Klik di kanvas langsung memilih layer teratas yang tidak terkunci dan pikselnya tidak transparan" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="autoSelChk" ${AUTOSEL?'checked':''}> Auto-Select</label>`+hint('Seret untuk memindahkan layer atau isi seleksi')+SEP+['#bFH|⇋ Balik H','#bFV|⇅ Balik V','#bRot|⟳ Putar 90°'].map(x=>{const[a,b]=x.split('|');return`<button class="ob" data-click="${a}">${b}</button>`}).join(''),
  xf:()=>`<label class="ol">Skala<input type="number" class="nb" data-bind="#sc" min="1" max="800">%</label><button class="ob" data-click="#xL">Skala layer</button><button class="ob" data-click="#xD">Skala gambar</button><button class="ob" data-click="#xF">Pas kanvas</button>`+SEP+hint('Tarik sudut layer · Shift = bebas'),
  sel:()=>MI(RCT)+SEP+`<label class="ol" title="Feather (px): tepi seleksi dilembutkan">Feather<input type="number" class="nb" data-bind="#sfea" min="0" max="250">px</label>`+SELX+SEP+hint('Shift = tambah · Alt = kurangi · Shift+Alt = irisan · saat menyeret: Shift = persegi, Alt = dari tengah · seret di dalam seleksi = geser seleksi'),
  esel:()=>MI(RCT)+SEP+`<label class="ol" title="Feather (px): tepi seleksi dilembutkan">Feather<input type="number" class="nb" data-bind="#sfea" min="0" max="250">px</label>`+SELX+SEP+hint('Shift = tambah · Alt = kurangi · Shift+Alt = irisan · saat menyeret: Shift = lingkaran, Alt = dari tengah · seret di dalam seleksi = geser seleksi'),
