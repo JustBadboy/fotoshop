@@ -870,7 +870,7 @@ function loadImg(f,asNew){if(!f||!f.type.startsWith('image/'))return;const u=URL
 let asNew=true;const fi=$('#fi');fi.onchange=()=>{loadImg(fi.files[0],asNew);fi.value=''};
 $('#bOpen').onclick=()=>{asNew=true;fi.click()};$('#bAdd').onclick=()=>{asNew=false;fi.click()};
 addEventListener('dragover',e=>e.preventDefault());addEventListener('drop',e=>{e.preventDefault();loadImg(e.dataTransfer.files[0],!L.length)});
-addEventListener('paste',e=>{const f=[...e.clipboardData.files][0];if(f)loadImg(f,false)});
+/* paste: lihat handler terpadu di bagian Edit */
 $('#bNew').onclick=()=>{const v=prompt('Ukuran kanvas (lebar x tinggi):','1200x800');if(!v)return;const m=v.match(/(\d+)\D+(\d+)/);if(!m)return;D.w=Math.min(8000,+m[1]);D.h=Math.min(8000,+m[2]);L=[];const c=mk(D.w,D.h),g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,D.w,D.h);addLayer('Latar',c);H=[];push();sync();fit()};
 function save(type){render();let c=cv;if(type=='image/jpeg'){c=mk(D.w,D.h);const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,D.w,D.h);g.drawImage(cv,0,0)}
  c.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='foto-edit.'+(type=='image/png'?'png':'jpg');a.click()},type,.93)}
@@ -1968,8 +1968,11 @@ st.addEventListener('pointermove',e=>{lastPE=e;ringAt(e)},true);st.addEventListe
 st.addEventListener('pointerdown',()=>{if(T=='hand'||(typeof sp!='undefined'&&sp))st.style.cursor='grabbing'},true);addEventListener('pointerup',()=>{applyCursor(T)},true);
 sz.addEventListener('input',()=>ringAt(lastPE));
 /* ---- Scroll: zoom / geser ---- */
+let _ctlDown=false;addEventListener('keydown',e=>{if(e.key==='Control')_ctlDown=true},true);addEventListener('keyup',e=>{if(e.key==='Control')_ctlDown=false},true);addEventListener('blur',()=>{_ctlDown=false});
 st.addEventListener('wheel',e=>{if(!cur||document.body.classList.contains('home'))return;e.preventDefault();e.stopImmediatePropagation();const k=e.deltaMode==1?16:e.deltaMode==2?400:1,dx=e.deltaX*k,dy=e.deltaY*k;
- if(e.ctrlKey||e.metaKey){const ns=CL(V.s*Math.exp(-dy*.0016),.02,32),r=st.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;V.x=mx-(mx-V.x)*ns/V.s;V.y=my-(my-V.y)*ns/V.s;V.s=ns}
+ const pinch=e.ctrlKey&&!e.metaKey&&!_ctlDown; /* cubit trackpad (ctrl tanpa tombol Ctrl asli) tetap zoom */
+ if(e.altKey||pinch){const zd=dy||dx,ns=CL(V.s*Math.exp(-zd*.0016),.02,32),r=st.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;V.x=mx-(mx-V.x)*ns/V.s;V.y=my-(my-V.y)*ns/V.s;V.s=ns}   /* Alt + scroll = zoom in/out */
+ else if(e.ctrlKey||e.metaKey){V.x-=dx||dy}   /* Ctrl + scroll = geser kiri/kanan */
  else if(e.shiftKey){V.x-=dx||dy}else{V.x-=dx;V.y-=dy}tf();ringAt(e)},{passive:false,capture:true});
 
 /* ===== Fotoshop v4: Contextual task bar (Generate, Select subject, Inverse, Content-aware fill, Remove background) ===== */
@@ -2473,13 +2476,52 @@ function edCopy(cut,merged){if(!cur||!A)return;let full;
  CLIP={c:cropC(full,b),x:b.x,y:b.y};sysClip(CLIP.c);
  if(cut){const g=A.c.getContext('2d');if(SEL){g.save();g.globalCompositeOperation='destination-out';g.drawImage(SEL.m,-A.x,-A.y);g.restore()}else g.clearRect(0,0,A.c.width,A.c.height);push();render();ui()}
  toast(cut?'Dipotong':merged?'Disalin (merged)':'Disalin')}
-function pasteClip(mode){if(!cur||!CLIP)return;const c=CLIP.c;let x,y,pc=c;
+function pasteClip(mode){if(!CLIP)return;if(!cur||document.body.classList.contains('home')||!L.length){pasteCanvas(CLIP.c,'Paste');return}const c=CLIP.c;let x,y,pc=c;if(mode=='center')pasteSize(c);
  if(mode=='center'){x=Math.round((D.w-c.width)/2);y=Math.round((D.h-c.height)/2)}else{x=CLIP.x;y=CLIP.y}
  if((mode=='into'||mode=='outside')&&SEL){const f=mk(D.w,D.h),g=f.getContext('2d');g.drawImage(c,x,y);g.globalCompositeOperation=mode=='into'?'destination-in':'destination-out';g.drawImage(SEL.m,0,0);pc=f;x=0;y=0}
  addLayer('Paste',pc,x,y);push();sync()}
-async function edPaste(mode){if(mode=='center'){try{const its=await navigator.clipboard.read();for(const it of its){const t=it.types.find(v=>v.startsWith('image/'));if(t){const b=await it.getType(t);loadImg(new File([b],'Paste.png',{type:t}),false);return}}}catch(e){}}
- if(!CLIP)return toast('Clipboard kosong');if(!cur)return;pasteClip(mode)}
-addEventListener('paste',e=>{if(/INPUT|TEXTAREA/.test(e.target.tagName))return;const f=[...((e.clipboardData&&e.clipboardData.files)||[])][0];if(!f&&CLIP&&cur&&!document.body.classList.contains('home')){e.preventDefault();pasteClip('center')}});
+async function edPaste(mode){if(mode=='center'){try{const its=await navigator.clipboard.read();for(const it of its){const t=it.types.find(v=>v.startsWith('image/'));if(t){const b=await it.getType(t);pasteFile(new File([b],'Paste.png',{type:t}));return}}}catch(e){}}
+ if(!CLIP)return toast('Clipboard kosong');pasteClip(mode)}
+/* ===== Paste terpadu: ukuran kertas mengikuti isi clipboard =====
+   1) Belum ada dokumen  -> dokumen baru seukuran gambar yang dipaste
+   2) Dokumen masih kosong (belum diedit) -> kanvas disesuaikan ke ukuran gambar
+   3) Dokumen berisi -> dipaste sebagai layer di tengah; kanvas diperbesar bila gambar lebih besar */
+function docBlank(){
+ if(L.length!==1||H.length>1)return null;const l=L[0];if(l.isGroup||l.mask)return null;
+ const w=l.c.width,h=l.c.height,d=new Uint32Array(l.c.getContext('2d',{willReadFrequently:true}).getImageData(0,0,w,h).data.buffer),v=d[0];
+ for(let i=1;i<d.length;i++)if(d[i]!==v)return null;return{v}}
+function pasteSize(c){
+ const bl=docBlank();
+ if(bl){
+  if(c.width===D.w&&c.height===D.h)return;
+  const a=bl.v>>>24,fill=a?'rgba('+(bl.v&255)+','+((bl.v>>>8)&255)+','+((bl.v>>>16)&255)+','+(a/255)+')':null;
+  canvasResize(Math.min(8000,c.width),Math.min(8000,c.height),0,0,fill);return}
+ if(c.width<=D.w&&c.height<=D.h)return;
+ const nw=Math.min(8000,Math.max(D.w,c.width)),nh=Math.min(8000,Math.max(D.h,c.height));
+ canvasResize(nw,nh,Math.round((nw-D.w)/2),Math.round((nh-D.h)/2),col2.value)}
+function pasteCanvas(c,name){
+ if(!cur||document.body.classList.contains('home')||!L.length){
+  newDoc(name,c.width,c.height,null,g=>g.drawImage(c,0,0));cur.type='Clipboard';try{addRecent(cur)}catch(e){}
+  toast('Dokumen baru dari clipboard: '+c.width+' × '+c.height+' px');return}
+ pasteSize(c);
+ addLayer(name,c,Math.round((D.w-c.width)/2),Math.round((D.h-c.height)/2));push();sync()}
+function pasteFile(f){
+ const u=URL.createObjectURL(f),im=new Image();
+ im.onload=()=>{const c=mk(im.naturalWidth,im.naturalHeight);c.getContext('2d').drawImage(im,0,0);URL.revokeObjectURL(u);pasteCanvas(c,'Paste')};
+ im.onerror=()=>{URL.revokeObjectURL(u);toast('Gambar di clipboard tidak bisa dibaca')};im.src=u}
+addEventListener('paste',e=>{
+ if(/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)||e.target.isContentEditable||document.getElementById('pdfDlg'))return;
+ const cd=e.clipboardData;let f=null;
+ if(cd){f=[...(cd.files||[])].find(x=>x.type.startsWith('image/'))||null;
+  if(!f&&cd.items)for(const it of cd.items){if(it.kind==='file'&&it.type.startsWith('image/')){f=it.getAsFile();break}}}
+ if(f){e.preventDefault();pasteFile(f);return}
+ if(CLIP){e.preventDefault();pasteClip('center');return}
+ const html=cd&&cd.getData&&cd.getData('text/html'),m=html&&/<img[^>]+src=["']([^"']+)["']/i.exec(html);
+ if(m){e.preventDefault();fetch(m[1]).then(r=>r.blob()).then(b=>{if(!b.type.startsWith('image/'))throw 0;pasteFile(new File([b],'Clipboard.png',{type:b.type}))}).catch(()=>toast('Gambar dari halaman web tidak bisa diambil (dibatasi CORS). Simpan dulu lalu buka.'));return}
+ if(navigator.clipboard&&navigator.clipboard.read)navigator.clipboard.read().then(async its=>{
+  for(const it of its){const t=it.types.find(v=>v.startsWith('image/'));if(t){pasteFile(new File([await it.getType(t)],'Clipboard.png',{type:t}));return}}
+  toast('Clipboard tidak berisi gambar')}).catch(()=>{})
+});
 function edFill(){if(!cur||!A)return;
  const opts=['Foreground Color','Background Color','Black','White','50% Gray',...PATS.map(p=>'Pattern: '+p.n)];
  fsDlg('Fill',`<label class="fr3">Contents<select id="ffC">${opts.map((o,i)=>`<option value="${i}">${esc(o)}</option>`).join('')}</select></label><label class="fr3">Opacity (%)<input id="ffO" type="number" min="1" max="100" value="100"></label><label class="fr3">Preserve Transparency<input id="ffP" type="checkbox"></label>`,'OK',r=>{
