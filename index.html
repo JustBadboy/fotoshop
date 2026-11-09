@@ -863,7 +863,7 @@ st.onpointerup=e=>{if(!drag)return;const d=drag;drag=null;if(d.pan)return;if(NT.
  else if(T=='crop'&&d.e){const x=Math.round(Math.min(d.s.x,p.x)),y=Math.round(Math.min(d.s.y,p.y)),w=Math.round(Math.abs(p.x-d.s.x)),h=Math.round(Math.abs(p.y-d.s.y));
   if(w>4&&h>4)confirmBox(`Crop ke ${w}×${h}px?`,()=>{L.forEach(l=>{const n=mk(w,h);n.getContext('2d').drawImage(l.c,l.x-x,l.y-y);l.c=n;l.x=l.y=0});D.w=w;D.h=h;push();sync();fit()})}
  else if(T=='brush'||T=='eraser'||T=='move')push()};
-st.addEventListener('wheel',e=>{e.preventDefault();const r=st.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top,ns=Math.min(16,Math.max(.05,V.s*(e.deltaY<0?1.1:1/1.1)));V.x=mx-(mx-V.x)*ns/V.s;V.y=my-(my-V.y)*ns/V.s;V.s=ns;tf()},{passive:false});
+/* handler wheel lama dihapus (bentrok dengan zoom Alt+scroll); lihat handler wheel baru di bawah */
 function loadImg(f,asNew){if(!f||!f.type.startsWith('image/'))return;const u=URL.createObjectURL(f),im=new Image();im.onload=()=>{
  if(asNew||!L.length||document.body.classList.contains('home')){newDoc(f.name,im.width,im.height,null,g=>g.drawImage(im,0,0));cur.type=(f.name.split('.').pop()||'IMG').toUpperCase().replace('JPG','JPEG');addRecent(cur)}
  else{const c=mk(im.width,im.height);c.getContext('2d').drawImage(im,0,0);addLayer(f.name.slice(0,18),c,Math.round((D.w-im.width)/2),Math.round((D.h-im.height)/2));push();sync()}URL.revokeObjectURL(u)};im.src=u}
@@ -1971,7 +1971,7 @@ sz.addEventListener('input',()=>ringAt(lastPE));
 let _ctlDown=false;addEventListener('keydown',e=>{if(e.key==='Control')_ctlDown=true},true);addEventListener('keyup',e=>{if(e.key==='Control')_ctlDown=false},true);addEventListener('blur',()=>{_ctlDown=false});
 st.addEventListener('wheel',e=>{if(!cur||document.body.classList.contains('home'))return;e.preventDefault();e.stopImmediatePropagation();const k=e.deltaMode==1?16:e.deltaMode==2?400:1,dx=e.deltaX*k,dy=e.deltaY*k;
  const pinch=e.ctrlKey&&!e.metaKey&&!_ctlDown; /* cubit trackpad (ctrl tanpa tombol Ctrl asli) tetap zoom */
- if(e.altKey||pinch){const zd=dy||dx,ns=CL(V.s*Math.exp(-zd*.0016),.02,32),r=st.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;V.x=mx-(mx-V.x)*ns/V.s;V.y=my-(my-V.y)*ns/V.s;V.s=ns}   /* Alt + scroll = zoom in/out */
+ if(e.altKey||pinch){const zd=Math.abs(dy)>=Math.abs(dx)?dy:dx;if(!zd){tf();return}const ns=CL(V.s*Math.exp(-zd*.0016),.02,32),r=st.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;V.x=mx-(mx-V.x)*ns/V.s;V.y=my-(my-V.y)*ns/V.s;V.s=ns}   /* Alt + scroll = zoom in/out */
  else if(e.ctrlKey||e.metaKey){V.x-=dx||dy}   /* Ctrl + scroll = geser kiri/kanan */
  else if(e.shiftKey){V.x-=dx||dy}else{V.x-=dx;V.y-=dy}tf();ringAt(e)},{passive:false,capture:true});
 
