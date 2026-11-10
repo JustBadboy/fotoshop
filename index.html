@@ -894,7 +894,11 @@ function loadImg(f,asNew){if(!f||!f.type.startsWith('image/'))return;const u=URL
  else{const c=mk(im.width,im.height);c.getContext('2d').drawImage(im,0,0);addLayer(f.name.slice(0,18),c,Math.round((D.w-im.width)/2),Math.round((D.h-im.height)/2));push();sync()}URL.revokeObjectURL(u)};im.src=u}
 let asNew=true;const fi=$('#fi');fi.onchange=()=>{loadImg(fi.files[0],asNew);fi.value=''};
 $('#bOpen').onclick=()=>{asNew=true;fi.click()};$('#bAdd').onclick=()=>{asNew=false;fi.click()};
-addEventListener('dragover',e=>e.preventDefault());addEventListener('drop',e=>{e.preventDefault();loadImg(e.dataTransfer.files[0],!L.length)});
+addEventListener('dragover',e=>e.preventDefault());addEventListener('drop',e=>{e.preventDefault();
+ const fs=[...(e.dataTransfer.files||[])];if(!fs.length)return;
+ /* drop tepat di atas kertas/canvas aktif -> jadi layer baru di dokumen itu; drop di luar kertas (area abu-abu, tab, panel) -> buka sebagai dokumen/tab baru */
+ const r=cv.getBoundingClientRect(),onPaper=L.length&&!document.body.classList.contains('home')&&e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom;
+ fs.forEach(f=>loadImg(f,!onPaper))});
 /* paste: lihat handler terpadu di bagian Edit */
 $('#bNew').onclick=()=>{const v=prompt('Ukuran kanvas (lebar x tinggi):','1200x800');if(!v)return;const m=v.match(/(\d+)\D+(\d+)/);if(!m)return;D.w=Math.min(8000,+m[1]);D.h=Math.min(8000,+m[2]);L=[];const c=mk(D.w,D.h),g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,D.w,D.h);addLayer('Latar',c);H=[];push();sync();fit()};
 function save(type){render();let c=cv;if(type=='image/jpeg'){c=mk(D.w,D.h);const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,D.w,D.h);g.drawImage(cv,0,0)}
