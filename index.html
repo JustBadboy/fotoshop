@@ -194,7 +194,7 @@ body.qm #opts{box-shadow:inset 0 -3px 0 #e33}
 <button id="bUn">↶ Undo</button><button id="bRe">↷ Redo</button><button id="bFit">Pas layar</button>
 <button id="bFH">⇋ Balik H</button><button id="bFV">⇅ Balik V</button><button id="bRot">⟳ Putar 90°</button>
 </div><span id="info" style="margin-left:auto;color:var(--m)"></span>
-<input id="fi" type="file" accept="image/*,application/pdf,.pdf" hidden>
+<input id="fi" type="file" accept="image/*,application/pdf,.pdf,.psd,image/vnd.adobe.photoshop" hidden>
 </header>
 <div id="opts"></div>
 <input id="twp" type="range" min="-100" max="100" value="0" hidden>
@@ -2379,7 +2379,7 @@ function fsRevert(){if(!cur)return;const s=cur.savedSnap;if(!s||H[H.length-1]===
 const fsCloseAll=()=>{while(docs.length){const n=docs.length;closeDoc(0);if(docs.length==n)break}};
 const fsCloseOthers=()=>{const k=cur;docs.filter(d=>d!==k).forEach(d=>{const i=docs.indexOf(d);if(i>=0)closeDoc(i)})};
 async function fsClip(asNewDoc){try{const its=await navigator.clipboard.read();for(const it of its){const t=it.types.find(x=>x.startsWith('image/'));if(t){const b=await it.getType(t);loadImg(new File([b],'Clipboard.png',{type:t}),asNewDoc);return}}toast('Clipboard tidak berisi gambar')}catch(e){toast('Tidak bisa membaca clipboard – tekan Ctrl+V saat kanvas aktif')}}
-function fsOpenAs(){fsDlg('Open As','<label class="fr3">Format file<select id="fdO"><option value="image/*">Semua gambar</option><option value="image/png">PNG</option><option value="image/jpeg">JPEG</option><option value="image/webp">WebP</option><option value="image/gif">GIF</option><option value="image/bmp">BMP</option><option value="image/svg+xml">SVG</option></select></label>','Pilih file…',r=>{fi.accept=r.querySelector('#fdO').value;asNew=true;const rs=()=>{fi.accept='image/*'};fi.addEventListener('change',rs,{once:true});fi.addEventListener('cancel',rs,{once:true});fi.click()})}
+function fsOpenAs(){fsDlg('Open As','<label class="fr3">Format file<select id="fdO"><option value="image/*">Semua gambar</option><option value="image/png">PNG</option><option value="image/jpeg">JPEG</option><option value="image/webp">WebP</option><option value="image/gif">GIF</option><option value="image/bmp">BMP</option><option value="image/svg+xml">SVG</option><option value=".psd,image/vnd.adobe.photoshop">PSD (Photoshop)</option></select></label>','Pilih file…',r=>{fi.accept=r.querySelector('#fdO').value;asNew=true;const rs=()=>{fi.accept='image/*,application/pdf,.pdf,.psd,image/vnd.adobe.photoshop'};fi.addEventListener('change',rs,{once:true});fi.addEventListener('cancel',rs,{once:true});fi.click()})}
 const fsRecent=()=>PSM(RF.length?[...RF.map(it=>[it.name,()=>openRecent(it),'',0]),'-',['Clear Recent File List',()=>{RF.forEach(r=>idbDel(r.id));RF=[];saveRF();if(document.body.classList.contains('home'))renderHome()},'',0]]:[['(Empty)',()=>{},'',0,'x']]);
 /* ZIP sederhana (tanpa kompresi) untuk Package & Export Layers */
 const CRCT=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
@@ -3916,6 +3916,120 @@ window.openPop=function(b){_op(b);const w=b.dataset.pop;if((w=='brush'||w=='eras
   buildGrid();refresh();resetSize();
   setTimeout(()=>{try{okB.focus()}catch(_){}},30);
  }
+})();
+</script>
+<script>
+/* ===== Pembaca PSD (tanpa library): layer 8/16-bit RGB/Gray/CMYK, RAW/RLE/ZIP ===== */
+const PSD_BM={norm:'source-over','mul ':'multiply',scrn:'screen',over:'overlay',dark:'darken',lite:'lighten','div ':'color-dodge',idiv:'color-burn',hLit:'hard-light',sLit:'soft-light',diff:'difference',smud:'exclusion','hue ':'hue','sat ':'saturation',colr:'color','lum ':'luminosity'};
+async function psdInflate(b){const ds=new DecompressionStream('deflate'),w=ds.writable.getWriter();w.write(b).catch(()=>{});w.close().catch(()=>{});return new Uint8Array(await new Response(ds.readable).arrayBuffer())}
+/* decode n bidang (planar) mulai pos; hasil: array Uint8Array(w*h) 8-bit */
+async function psdPlanes(u8,pos,end,comp,n,w,h,depth){
+ const bps=depth>>3,bpr=w*bps,planes=[];
+ if(depth!=8&&depth!=16)throw new Error('PSD '+depth+'-bit belum didukung (hanya 8/16-bit)');
+ let raw;
+ if(comp==0){raw=u8.subarray(pos,end)}
+ else if(comp==1){
+  const dv=new DataView(u8.buffer,u8.byteOffset,u8.byteLength);let dp=pos+n*h*2,ci=pos;raw=new Uint8Array(n*h*bpr);
+  for(let c=0;c<n;c++)for(let r=0;r<h;r++){
+   const cnt=dv.getUint16(ci,false);ci+=2;const stop=dp+cnt;let o=(c*h+r)*bpr,oe=o+bpr,i=dp;
+   while(i<stop&&o<oe){let k=u8[i++];if(k>127)k-=256;
+    if(k>=0){const m=Math.min(k+1,oe-o);for(let j=0;j<m;j++)raw[o++]=u8[i+j];i+=k+1}
+    else if(k!=-128){const m=Math.min(1-k,oe-o),v=u8[i++];for(let j=0;j<m;j++)raw[o++]=v}}
+   dp=stop}
+ }
+ else if(comp==2||comp==3){
+  raw=await psdInflate(u8.slice(pos,end));
+  if(comp==3){for(let c=0;c<n*h;c++){const o=c*bpr;
+    if(bps==1){for(let x=1;x<w;x++)raw[o+x]=(raw[o+x]+raw[o+x-1])&255}
+    else{for(let x=1;x<w;x++){const a=o+x*2,p=a-2,v=(((raw[a]<<8)|raw[a+1])+((raw[p]<<8)|raw[p+1]))&65535;raw[a]=v>>8;raw[a+1]=v&255}}}}
+ }
+ else throw new Error('Kompresi PSD tidak dikenal: '+comp);
+ if(raw.length<n*h*bpr)throw new Error('Data PSD terpotong');
+ for(let c=0;c<n;c++){const p=new Uint8Array(w*h),base=c*h*bpr;
+  if(bps==1)p.set(raw.subarray(base,base+w*h));else for(let i=0;i<w*h;i++)p[i]=raw[base+i*2];
+  planes.push(p)}
+ return planes;
+}
+function psdRGBA(P,alpha,mode,w,h){
+ const out=new Uint8ClampedArray(w*h*4),N=w*h;
+ if(mode==3){for(let i=0,o=0;i<N;i++,o+=4){out[o]=P[0][i];out[o+1]=P[1][i];out[o+2]=P[2][i];out[o+3]=alpha?alpha[i]:255}}
+ else if(mode==1||mode==8){for(let i=0,o=0;i<N;i++,o+=4){out[o]=out[o+1]=out[o+2]=P[0][i];out[o+3]=alpha?alpha[i]:255}}
+ else if(mode==4){for(let i=0,o=0;i<N;i++,o+=4){const k=P[3][i];out[o]=P[0][i]*k/255;out[o+1]=P[1][i]*k/255;out[o+2]=P[2][i]*k/255;out[o+3]=alpha?alpha[i]:255}}
+ else throw new Error('Mode warna PSD ini belum didukung');
+ return out;
+}
+async function psdRead(buf){
+ const u8=new Uint8Array(buf),dv=new DataView(buf);let p=0;
+ const u16=()=>{const v=dv.getUint16(p);p+=2;return v},i16=()=>{const v=dv.getInt16(p);p+=2;return v},u32=()=>{const v=dv.getUint32(p);p+=4;return v},i32=()=>{const v=dv.getInt32(p);p+=4;return v};
+ const tag=o=>String.fromCharCode(u8[o],u8[o+1],u8[o+2],u8[o+3]);
+ if(u8.length<26||tag(0)!='8BPS')throw new Error('Bukan file PSD yang valid');
+ p=4;const ver=u16();if(ver==2)throw new Error('Format PSB (dokumen besar) belum didukung');if(ver!=1)throw new Error('Versi PSD tidak dikenal');
+ p=12;const C=u16(),H=u32(),W=u32(),depth=u16(),mode=u16();
+ if(!(mode==1||mode==3||mode==4||mode==8))throw new Error('Mode warna PSD belum didukung (hanya Grayscale, RGB, CMYK)');
+ p=26;{const a=u32();p+=a;const b=u32();p+=b}           /* color mode data + image resources */
+ const lmLen=u32(),lmEnd=p+lmLen,layers=[];
+ if(lmLen>0){
+  const liLen=u32(),liEnd=p+liLen;
+  if(liLen>0){
+   let cnt=i16();cnt=Math.abs(cnt);const recs=[];
+   for(let n=0;n<cnt;n++){
+    const top=i32(),left=i32(),bot=i32(),right=i32(),nc=u16(),chs=[];
+    for(let c=0;c<nc;c++){const id=i16(),len=u32();chs.push({id,len})}
+    p+=4;const bk=tag(p);p+=4;const op=u8[p++];p++;const fl=u8[p++];p++;
+    const exLen=u32(),exEnd=p+exLen;
+    {const a=u32();p+=a;const b=u32();p+=b}
+    const nl=u8[p],pname=new TextDecoder('latin1').decode(u8.subarray(p+1,p+1+nl));p+=(1+nl+3)&~3;
+    let name=pname,div=0;
+    while(p+12<=exEnd){
+     const sg=tag(p);if(sg!='8BIM'&&sg!='8B64'){p++;continue}
+     const key=tag(p+4);let len=dv.getUint32(p+8);const ds=p+12;
+     if(key=='luni'){const L2=dv.getUint32(ds);let s='';for(let i=0;i<L2&&ds+4+i*2+1<u8.length;i++)s+=String.fromCharCode(dv.getUint16(ds+4+i*2));name=s.replace(/\0+$/,'')||pname}
+     else if(key=='lsct'||key=='lsdk'){const t=dv.getUint32(ds);if(t>=1&&t<=3)div=1}
+     p=ds+len;
+    }
+    p=exEnd;
+    recs.push({top,left,bot,right,chs,bk,op,hidden:!!(fl&2),name,div});
+   }
+   for(const r of recs){
+    const w=r.right-r.left,h=r.bot-r.top,P={};
+    for(const ch of r.chs){
+     const s=p,e=p+ch.len;p=e;
+     if(r.div||w<=0||h<=0||ch.id<-1||ch.len<2)continue;
+     try{const comp=dv.getUint16(s);P[ch.id]=(await psdPlanes(u8,s+2,e,comp,1,w,h,depth))[0]}catch(err){r.err=err}
+    }
+    if(r.div||w<=0||h<=0)continue;
+    const need=mode==4?[0,1,2,3]:mode==3?[0,1,2]:[0];
+    if(need.some(i=>!P[i]))continue;
+    try{layers.push({name:r.name||'Layer',x:r.left,y:r.top,w,h,o:Math.round(r.op/255*100),m:PSD_BM[r.bk]||'source-over',v:r.hidden?0:1,rgba:psdRGBA(need.map(i=>P[i]),P[-1],mode,w,h)})}catch(_){}
+   }
+  }
+ }
+ /* gambar gabungan (composite) */
+ let comp=null;
+ try{p=lmEnd;const cm=u16(),n=mode==4?4:mode==3?3:1;comp={rgba:psdRGBA(await psdPlanes(u8,p,u8.length,cm,Math.min(n,C),W,H,depth),null,mode,W,H)}}catch(_){}
+ if(!layers.length&&!comp)throw new Error('Tidak ada data gambar yang bisa dibaca');
+ return{w:W,h:H,layers,comp};
+}
+
+(function(){
+ const isPsd=f=>f&&(/\.psd$/i.test(f.name||'')||f.type==='image/vnd.adobe.photoshop');
+ const cvs=(w,h,rgba)=>{const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').putImageData(new ImageData(rgba,w,h),0,0);return c};
+ async function psdOpen(file,asNew){
+  toast('Membuka PSD…');
+  let r;try{r=await psdRead(await file.arrayBuffer())}catch(e){alert('Tidak bisa membuka PSD: '+((e&&e.message)||e));return}
+  const ls=r.layers.map(l=>({...l,c:cvs(l.w,l.h,l.rgba)}));
+  if(!ls.length&&r.comp)ls.push({name:'Background',x:0,y:0,o:100,m:'source-over',v:1,c:cvs(r.w,r.h,r.comp.rgba)});
+  if(!asNew&&L.length&&!document.body.classList.contains('home')){
+   const ox=Math.round((D.w-r.w)/2),oy=Math.round((D.h-r.h)/2);
+   ls.forEach(l=>{const n=addLayer(l.name,l.c,l.x+ox,l.y+oy);n.o=l.o;n.m=l.m;n.v=l.v});
+   push();sync();toast('PSD ditambahkan sebagai '+ls.length+' layer');return}
+  newDoc(file.name,r.w,r.h,null);L=[];A=null;
+  ls.forEach(l=>{const n=addLayer(l.name,l.c,l.x,l.y);n.o=l.o;n.m=l.m;n.v=l.v});
+  H=[];R=[];push();sync();cur.type='PSD';cur.savedSnap=H[H.length-1];saveDoc();try{addRecent(cur)}catch(_){}
+  toast('PSD dibuka: '+ls.length+' layer');
+ }
+ const _li2=window.loadImg;
+ window.loadImg=function(f,asNew){if(isPsd(f))return psdOpen(f,asNew);return _li2.apply(this,arguments)};
 })();
 </script>
 </body></html>
