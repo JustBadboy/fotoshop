@@ -4163,11 +4163,11 @@ async function psdRead(buf){
  const lb=document.createElement('div');lb.id='abLb';wrap.append(lb);
  let sig='';
  function abUpdate(){
-  const ab=(typeof cur!=='undefined'&&cur&&cur.abs)||[],list=[];
-  for(const a of ab){const g=L.find(x=>x.id===a.id&&x.isGroup);if(g&&g.v&&!grpHidden(g))list.push({a,g})}
-  const s=V.s,sg=s+'|'+list.map(o=>o.g.id+':'+o.g.name+':'+o.a.x0+','+o.a.y0+','+o.a.x1+','+o.a.y1).join(';');
+  const ab=(typeof cur!=='undefined'&&cur&&cur.abs)||[],list=[];let has=false;
+  for(const a of ab){const g=L.find(x=>x.id===a.id&&x.isGroup);if(!g)continue;has=true;if(g.v&&!grpHidden(g))list.push({a,g})}
+  const s=V.s,sg=s+'|'+has+'|'+list.map(o=>o.g.id+':'+o.g.name+':'+o.a.x0+','+o.a.y0+','+o.a.x1+','+o.a.y1).join(';');
   if(sg===sig)return;sig=sg;
-  wrap.classList.toggle('abmode',list.length>0);
+  wrap.classList.toggle('abmode',has);   /* dokumen ber-artboard: kanvas hanya mengikuti template (kotak artboard), bukan kotak-kotak penuh */
   bg.textContent='';lb.textContent='';
   for(const{a,g}of list){
    const d=document.createElement('div');d.className='abA';
