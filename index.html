@@ -3958,6 +3958,21 @@ function psdRGBA(P,alpha,mode,w,h){
  else throw new Error('Mode warna PSD ini belum didukung');
  return out;
 }
+
+const PSD_ADJ=new Set(['lfx2','lrFX','brit','levl','curv','expA','vibA','hue ','hue2','blnc','blwh','phfl','mixr','clrL','nvrt','post','thrs','grdm','selc']);
+function psdBuildMask(parts,W,H){
+ let m=null;
+ for(const q of parts){
+  if(q.fg&2)continue;
+  const a=new Uint8Array(W*H);if(q.def)a.fill(q.def);
+  if(q.plane){const w=q.right-q.left,h=q.bot-q.top;
+   for(let j=0;j<h;j++){const y=q.top+j;if(y<0||y>=H)continue;for(let i=0;i<w;i++){const x=q.left+i;if(x<0||x>=W)continue;a[y*W+x]=q.plane[j*w+i]}}}
+  if(q.fg&4)for(let i=0;i<a.length;i++)a[i]=255-a[i];
+  if(!m)m=a;else for(let i=0;i<m.length;i++)m[i]=m[i]*a[i]/255;
+ }
+ if(m){let all=1;for(let i=0;i<m.length;i++)if(m[i]!=255){all=0;break}if(all)m=null}
+ return m;
+}
 async function psdRead(buf){
  const u8=new Uint8Array(buf),dv=new DataView(buf);let p=0;
  const u16=()=>{const v=dv.getUint16(p);p+=2;return v},i16=()=>{const v=dv.getInt16(p);p+=2;return v},u32=()=>{const v=dv.getUint32(p);p+=4;return v},i32=()=>{const v=dv.getInt32(p);p+=4;return v};
@@ -3966,67 +3981,116 @@ async function psdRead(buf){
  p=4;const ver=u16();if(ver==2)throw new Error('Format PSB (dokumen besar) belum didukung');if(ver!=1)throw new Error('Versi PSD tidak dikenal');
  p=12;const C=u16(),H=u32(),W=u32(),depth=u16(),mode=u16();
  if(!(mode==1||mode==3||mode==4||mode==8))throw new Error('Mode warna PSD belum didukung (hanya Grayscale, RGB, CMYK)');
- p=26;{const a=u32();p+=a;const b=u32();p+=b}           /* color mode data + image resources */
- const lmLen=u32(),lmEnd=p+lmLen,layers=[];
+ p=26;{const a=u32();p+=a;const b=u32();p+=b}
+ const lmLen=u32(),lmEnd=p+lmLen,out=[];let unsupported=false;
  if(lmLen>0){
-  const liLen=u32(),liEnd=p+liLen;
+  const liLen=u32();
   if(liLen>0){
-   let cnt=i16();cnt=Math.abs(cnt);const recs=[];
+   const cnt=Math.abs(i16()),recs=[];
    for(let n=0;n<cnt;n++){
     const top=i32(),left=i32(),bot=i32(),right=i32(),nc=u16(),chs=[];
     for(let c=0;c<nc;c++){const id=i16(),len=u32();chs.push({id,len})}
-    p+=4;const bk=tag(p);p+=4;const op=u8[p++];p++;const fl=u8[p++];p++;
+    p+=4;const bk=tag(p);p+=4;const op=u8[p++],clip=u8[p++],fl=u8[p++];p++;
     const exLen=u32(),exEnd=p+exLen;
-    {const a=u32();p+=a;const b=u32();p+=b}
+    const mLen=u32(),mS=p;let um=null,rm=null;
+    if(mLen>=18){um={top:dv.getInt32(mS),left:dv.getInt32(mS+4),bot:dv.getInt32(mS+8),right:dv.getInt32(mS+12),def:u8[mS+16],fg:u8[mS+17]};
+     if(mLen>=36){const e=mS+mLen;rm={fg:u8[e-18],def:u8[e-17],top:dv.getInt32(e-16),left:dv.getInt32(e-12),bot:dv.getInt32(e-8),right:dv.getInt32(e-4)}}}
+    p=mS+mLen;{const a=u32();p+=a}
     const nl=u8[p],pname=new TextDecoder('latin1').decode(u8.subarray(p+1,p+1+nl));p+=(1+nl+3)&~3;
-    let name=pname,div=0;
+    let name=pname,sect=0,fill=100;
     while(p+12<=exEnd){
      const sg=tag(p);if(sg!='8BIM'&&sg!='8B64'){p++;continue}
-     const key=tag(p+4);let len=dv.getUint32(p+8);const ds=p+12;
+     const key=tag(p+4),len=dv.getUint32(p+8),ds=p+12;
      if(key=='luni'){const L2=dv.getUint32(ds);let s='';for(let i=0;i<L2&&ds+4+i*2+1<u8.length;i++)s+=String.fromCharCode(dv.getUint16(ds+4+i*2));name=s.replace(/\0+$/,'')||pname}
-     else if(key=='lsct'||key=='lsdk'){const t=dv.getUint32(ds);if(t>=1&&t<=3)div=1}
+     else if(key=='lsct'||key=='lsdk'){sect=dv.getUint32(ds)}
+     else if(key=='iOpa'){fill=Math.round(u8[ds]/255*100)}
+     else if(PSD_ADJ.has(key))unsupported=true;
      p=ds+len;
     }
     p=exEnd;
-    recs.push({top,left,bot,right,chs,bk,op,hidden:!!(fl&2),name,div});
+    recs.push({top,left,bot,right,chs,bk,op,clip,fill,hidden:!!(fl&2),name,sect,um,rm});
    }
+   const stack=[];let base=null;
    for(const r of recs){
-    const w=r.right-r.left,h=r.bot-r.top,P={};
+    const w=r.right-r.left,h=r.bot-r.top,P={},MP={};
     for(const ch of r.chs){
      const s=p,e=p+ch.len;p=e;
-     if(r.div||w<=0||h<=0||ch.id<-1||ch.len<2)continue;
-     try{const comp=dv.getUint16(s);P[ch.id]=(await psdPlanes(u8,s+2,e,comp,1,w,h,depth))[0]}catch(err){r.err=err}
+     if(r.sect||ch.len<2)continue;
+     try{
+      const comp=dv.getUint16(s);
+      if(ch.id>=-1){if(w>0&&h>0)P[ch.id]=(await psdPlanes(u8,s+2,e,comp,1,w,h,depth))[0]}
+      else{const m=ch.id==-3?(r.rm||r.um):r.um;
+       if(m){let l=m.left,t=m.top,rr=m.right,b=m.bot;if(m.fg&1){l+=r.left;rr+=r.left;t+=r.top;b+=r.top}
+        if(rr>l&&b>t)MP[ch.id]={plane:(await psdPlanes(u8,s+2,e,comp,1,rr-l,b-t,depth))[0],left:l,top:t,right:rr,bot:b,def:m.def,fg:m.fg}}}
+     }catch(err){}
     }
-    if(r.div||w<=0||h<=0)continue;
+    if(r.sect==3){stack.push([]);continue}
+    if(r.sect==1||r.sect==2){
+     const mem=stack.pop()||[],head={group:true,name:r.name||'Group',v:r.hidden?0:1,o:Math.round(r.op/255*100),open:r.sect==1,members:mem};
+     mem.forEach(e=>e.parent=head);out.push(head);if(stack.length)stack[stack.length-1].push(head);continue}
     const need=mode==4?[0,1,2,3]:mode==3?[0,1,2]:[0];
-    if(need.some(i=>!P[i]))continue;
-    try{layers.push({name:r.name||'Layer',x:r.left,y:r.top,w,h,o:Math.round(r.op/255*100),m:PSD_BM[r.bk]||'source-over',v:r.hidden?0:1,rgba:psdRGBA(need.map(i=>P[i]),P[-1],mode,w,h)})}catch(_){}
+    if(w<=0||h<=0||need.some(i=>!P[i])){if(!r.clip)base=null;continue}
+    const parts=[];
+    for(const id of [-2,-3]){if(!r.chs.some(c=>c.id==id))continue;
+     if(MP[id])parts.push(MP[id]);
+     else{const m=id==-3?(r.rm||r.um):r.um;if(m&&m.def!=255)parts.push({plane:null,left:0,top:0,right:0,bot:0,def:m.def,fg:m.fg})}}
+    const ma=parts.length?psdBuildMask(parts,W,H):null;
+    const rgba=psdRGBA(need.map(i=>P[i]),P[-1],mode,w,h);
+    const lay={name:r.name||'Layer',x:r.left,y:r.top,w,h,o:Math.round(r.op/255*100),fill:r.fill,m:PSD_BM[r.bk]||'source-over',v:r.hidden?0:1,rgba,mask:ma};
+    if(r.clip){
+     if(!base)lay.v=0;
+     else{ /* clipping mask: bentuk (alpha) layer dasar membatasi layer ini */
+      for(let j=0;j<h;j++){const y=r.top+j;for(let i=0;i<w;i++){const x=r.left+i;let a=0;
+       const bx=x-base.x,by=y-base.y;
+       if(bx>=0&&by>=0&&bx<base.w&&by<base.h){a=base.rgba[(by*base.w+bx)*4+3];if(base.mask&&x>=0&&y>=0&&x<W&&y<H)a=a*base.mask[y*W+x]/255;else if(base.mask)a=0}
+       const o=(j*w+i)*4+3;rgba[o]=rgba[o]*a/255}}}
+    }else base=lay;
+    out.push(lay);if(stack.length)stack[stack.length-1].push(lay);
    }
+   /* visibilitas & opacity dari grup induk (di atas induk langsung) */
+   for(const e of out){let a=e.parent,d=0;while(a){if(d>0&&!a.v)e.v=0;if(e.o!==undefined&&!e.group&&a.o<100)e.o=Math.round(e.o*a.o/100);a=a.parent;d++}}
+   /* grup tanpa layer/aneh: buang yang kosong */
   }
  }
- /* gambar gabungan (composite) */
  let comp=null;
  try{p=lmEnd;const cm=u16(),n=mode==4?4:mode==3?3:1;comp={rgba:psdRGBA(await psdPlanes(u8,p,u8.length,cm,Math.min(n,C),W,H,depth),null,mode,W,H)}}catch(_){}
- if(!layers.length&&!comp)throw new Error('Tidak ada data gambar yang bisa dibaca');
- return{w:W,h:H,layers,comp};
+ const layers=out;
+ if(!layers.some(l=>!l.group)&&!comp)throw new Error('Tidak ada data gambar yang bisa dibaca');
+ return{w:W,h:H,layers,comp,unsupported};
 }
 
 (function(){
  const isPsd=f=>f&&(/\.psd$/i.test(f.name||'')||f.type==='image/vnd.adobe.photoshop');
  const cvs=(w,h,rgba)=>{const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').putImageData(new ImageData(rgba,w,h),0,0);return c};
+ const maskCv=(ma,W,H,dw,dh,ox,oy)=>{const t=document.createElement('canvas');t.width=W;t.height=H;const im=new ImageData(W,H);
+  for(let i=0;i<W*H;i++){const o=i*4;im.data[o]=im.data[o+1]=im.data[o+2]=ma[i];im.data[o+3]=255}
+  t.getContext('2d').putImageData(im,0,0);
+  const c=document.createElement('canvas');c.width=dw;c.height=dh;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,dw,dh);g.drawImage(t,ox,oy);return c};
+ /* bangun layer di dokumen aktif (D harus sudah diset); ox/oy = geser seluruh isi PSD */
+ function build(r,ox,oy){
+  const map=new Map();let n=0;
+  for(const e of r.layers){
+   let l;
+   if(e.group){l=addLayer(e.name,mk(1,1),0,0);l.isGroup=1;l.open=e.open;l.v=e.v;l.o=100}
+   else{l=addLayer(e.name,cvs(e.w,e.h,e.rgba),e.x+ox,e.y+oy);l.o=e.o;l.m=e.m;l.v=e.v;if(e.fill!==100)l.fill=e.fill;
+    if(e.mask)l.mask=maskCv(e.mask,r.w,r.h,D.w,D.h,ox,oy);n++}
+   map.set(e,l)}
+  for(const e of r.layers)if(e.parent&&map.get(e.parent))map.get(e).inGroup=map.get(e.parent).id;
+  if(!n&&r.comp){const l=addLayer('Background',cvs(r.w,r.h,r.comp.rgba),ox,oy);n=1}
+  if(r.unsupported&&r.comp){const l=addLayer('PSD Komposit (referensi)',cvs(r.w,r.h,r.comp.rgba),ox,oy);l.v=0}
+  const last=[...L].reverse().find(x=>!x.isGroup&&x.v!==0)||L[L.length-1];if(last)A=last;
+  return n}
  async function psdOpen(file,asNew){
   toast('Membuka PSD…');
   let r;try{r=await psdRead(await file.arrayBuffer())}catch(e){alert('Tidak bisa membuka PSD: '+((e&&e.message)||e));return}
-  const ls=r.layers.map(l=>({...l,c:cvs(l.w,l.h,l.rgba)}));
-  if(!ls.length&&r.comp)ls.push({name:'Background',x:0,y:0,o:100,m:'source-over',v:1,c:cvs(r.w,r.h,r.comp.rgba)});
+  const note=r.unsupported?' (ada efek/adjustment yang belum didukung; lihat layer "PSD Komposit (referensi)")':'';
   if(!asNew&&L.length&&!document.body.classList.contains('home')){
-   const ox=Math.round((D.w-r.w)/2),oy=Math.round((D.h-r.h)/2);
-   ls.forEach(l=>{const n=addLayer(l.name,l.c,l.x+ox,l.y+oy);n.o=l.o;n.m=l.m;n.v=l.v});
-   push();sync();toast('PSD ditambahkan sebagai '+ls.length+' layer');return}
+   const ox=Math.round((D.w-r.w)/2),oy=Math.round((D.h-r.h)/2),n=build(r,ox,oy);
+   push();sync();toast('PSD ditambahkan: '+n+' layer'+note);return}
   newDoc(file.name,r.w,r.h,null);L=[];A=null;
-  ls.forEach(l=>{const n=addLayer(l.name,l.c,l.x,l.y);n.o=l.o;n.m=l.m;n.v=l.v});
+  const n=build(r,0,0);
   H=[];R=[];push();sync();cur.type='PSD';cur.savedSnap=H[H.length-1];saveDoc();try{addRecent(cur)}catch(_){}
-  toast('PSD dibuka: '+ls.length+' layer');
+  toast('PSD dibuka: '+n+' layer'+note);
  }
  const _li2=window.loadImg;
  window.loadImg=function(f,asNew){if(isPsd(f))return psdOpen(f,asNew);return _li2.apply(this,arguments)};
