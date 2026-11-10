@@ -4176,7 +4176,7 @@ async function psdRead(buf){
    t.style.cssText+=`left:${a.x0}px;top:${a.y0-18/s}px;font-size:${12/s}px`;lb.append(t)}
  }
  const hook=n=>{const f=window[n];if(typeof f!=='function')return;window[n]=function(){const r=f.apply(this,arguments);try{abUpdate()}catch(_){}return r}};
- ['tf','render','sync'].forEach(hook);
+ ['tf','render','sync','ui'].forEach(hook);
  try{abUpdate()}catch(_){}
 })();
 </script>
