@@ -572,6 +572,15 @@ function lmKey(e){if(e.key=='Escape')lmClose()}
 function mergeDown(l){const i=L.indexOf(l);if(i<=0)return;const b=L[i-1],g=b.c.getContext('2d');
  g.save();g.globalAlpha=(l.o/100)*((l.fill??100)/100);g.globalCompositeOperation=l.m;g.filter=fs(l.f);g.drawImage(l.c,l.x-b.x,l.y-b.y);g.restore();
  L.splice(i,1);A=b;push();render();sync()}
+function mergeLayers(){if(!cur||!A)return;
+ const sel=[...new Set([A,...SELL])].filter(x=>!x.isGroup).sort((a,b)=>L.indexOf(a)-L.indexOf(b));
+ if(sel.length>1){const base=sel[0];let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;sel.forEach(l=>{x0=Math.min(x0,l.x);y0=Math.min(y0,l.y);x1=Math.max(x1,l.x+l.c.width);y1=Math.max(y1,l.y+l.c.height)});
+  const c=mk(x1-x0,y1-y0),g=c.getContext('2d');
+  sel.forEach((l,k)=>{g.save();g.globalAlpha=k?(l.o/100)*((l.fill??100)/100):1;g.globalCompositeOperation=k?l.m:'source-over';g.filter=fs(l.f);g.drawImage(l.c,l.x-x0,l.y-y0);g.restore()});
+  base.c=c;base.x=x0;base.y=y0;L=L.filter(l=>l===base||!sel.includes(l));SELL.clear();A=base;push();render();sync();toast('Layer digabung');return}
+ if(A.isGroup){toast('Pilih layer biasa untuk digabung');return}
+ const i=L.indexOf(A);if(i<=0){toast('Tidak ada layer di bawahnya');return}
+ mergeDown(A);toast('Digabung ke layer di bawah')}
 function mergeVisible(){const vis=L.filter(x=>x.v&&!x.isGroup&&!grpHidden(x));if(vis.length<2){toast('Butuh minimal 2 layer yang terlihat');return}
  const c=mk(D.w,D.h),g=c.getContext('2d');
  for(const l of vis){g.globalAlpha=(l.o/100)*((l.fill??100)/100);g.globalCompositeOperation=l.m;g.filter=fs(l.f);g.drawImage(l.c,l.x,l.y)}
@@ -603,7 +612,7 @@ function lmItems(l){const i=L.indexOf(l),n=L.length;const hasStyle=!!LSTYLE;
   ['Paste Layer Style',()=>{if(!LSTYLE)return;const t=SELL.has(l)&&SELL.size?[...SELL]:[l];t.forEach(x=>{x.m=LSTYLE.m;x.o=LSTYLE.o;x.f={...LSTYLE.f}});push();render();ui()},!hasStyle],
   ['Clear Layer Style',()=>{l.m='source-over';l.o=100;l.f=F0();push();render();ui()}],
   '-',
-  ['Merge Down',()=>mergeDown(l),i<=0],
+  ['Merge Down  (Ctrl+E)',()=>mergeDown(l),i<=0],
   ['Merge Visible',()=>mergeVisible()],
   ['Flatten Image',()=>$('#lFlat').click(),n<2],
   '-',
@@ -824,7 +833,7 @@ const selOp={all:()=>comb(mkm(g=>g.fillRect(0,0,D.w,D.h)),'new'),none:()=>{SEL=n
 const pt=e=>{const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)/V.s,y:(e.clientY-r.top)/V.s}};
 const hex=c=>[1,3,5].map(i=>parseInt(c.substr(i,2),16));
 function stroke(a,b){if(QM){qmStroke(a,b);return}const g=A.c.getContext('2d');if(typeof brSoft=='function'&&brSoft()){brStroke(g,a,b);clipSel();render();return}g.save();g.globalCompositeOperation=T=='eraser'?'destination-out':'source-over';g.globalAlpha=op.value/100;g.strokeStyle=g.fillStyle=col.value;g.lineWidth=+sz.value;g.lineCap=g.lineJoin='round';g.beginPath();g.moveTo(a.x-A.x,a.y-A.y);g.lineTo(b.x-A.x+.01,b.y-A.y);g.stroke();g.restore();clipSel();render()}
-function shape(g,a,b,dx,dy){g.save();g.strokeStyle=g.fillStyle=col.value;g.globalAlpha=op.value/100;g.lineWidth=+sz.value;g.lineCap='round';g.beginPath();const x=a.x-dx,y=a.y-dy,w=b.x-a.x,h=b.y-a.y;
+function shape(g,a,b,dx,dy){g.save();g.strokeStyle=g.fillStyle=col.value;g.globalAlpha=op.value/100;g.lineWidth=+sz.value;g.lineCap='round';g.beginPath();const x=a.x-dx,y=a.y-dy;let w=b.x-a.x,h=b.y-a.y;if(SHF){if(T=='line'){const sq=snap45(a,b);w=sq.x-a.x;h=sq.y-a.y}else{const mm=Math.max(Math.abs(w),Math.abs(h));w=Math.sign(w||1)*mm;h=Math.sign(h||1)*mm}}
  if(T=='line'){g.moveTo(x,y);g.lineTo(x+w,y+h)}else if(T=='rect')g.rect(x,y,w,h);else g.ellipse(x+w/2,y+h/2,Math.abs(w/2),Math.abs(h/2),0,0,7);
  fillc.checked&&T!='line'?g.fill():g.stroke();g.restore()}
 function flood(l,sx,sy,color,t){const c=l.c,g=c.getContext('2d'),W=c.width,Hh=c.height;sx|=0;sy|=0;if(sx<0||sy<0||sx>=W||sy>=Hh)return;
@@ -854,32 +863,53 @@ function autoPick(p,e){
   A=l;ui();return}
  /* klik di area transparan / layer terkunci semua: layer aktif tidak diubah */}
 document.addEventListener('change',e=>{if(e.target&&e.target.id=='autoSelChk')AUTOSEL=e.target.checked});
+/* ===== Shift = lurus (gaya Photoshop) ===== */
+let LSP=null,SHF=false;
+const lspOK=()=>LSP&&LSP.l===A&&LSP.d===cur;
+/* kunci ke kelipatan 45° dari titik a */
+function snap45(a,q){const dx=q.x-a.x,dy=q.y-a.y,d=Math.hypot(dx,dy);if(!d)return{x:q.x,y:q.y};const st45=Math.PI/4,t=Math.round(Math.atan2(dy,dx)/st45)*st45;return{x:a.x+Math.cos(t)*d,y:a.y+Math.sin(t)*d}}
+/* kunci sumbu horizontal / vertikal saat menyeret (kuas, penghapus, clone, heal, liquify) */
+function lockP(q,e){const L0=drag.last||drag.s;if(!e.shiftKey){drag.ax=null;drag.an=null;return q}
+ if(!drag.an)drag.an={x:L0.x,y:L0.y};
+ if(!drag.ax){const dx=q.x-drag.an.x,dy=q.y-drag.an.y;if(Math.hypot(dx,dy)*V.s<6)return L0;let t=Math.atan2(dy,dx);const k=Math.PI/2,r=Math.round(t/k)*k;if(Math.abs(t-r)<12*Math.PI/180)t=r;drag.ax={c:Math.abs(Math.cos(t))<1e-9?0:Math.cos(t),s:Math.abs(Math.sin(t))<1e-9?0:Math.sin(t)}}
+ const dx=q.x-drag.an.x,dy=q.y-drag.an.y,pr=dx*drag.ax.c+dy*drag.ax.s;return{x:drag.an.x+drag.ax.c*pr,y:drag.an.y+drag.ax.s*pr}}
+/* Shift+seret: garis lurus ke segala arah dari titik saat Shift ditekan; pratinjau dengan memulihkan snapshot layer */
+function shfDraw(p,e,fn){if(!e.shiftKey){drag.snap=null;drag.an=null;return false}
+ const tg=(QM&&SEL)?SEL.m:A.c;
+ if(!drag.snap){drag.an={x:drag.last.x,y:drag.last.y};drag.snap=cl(tg)}
+ const g=tg.getContext('2d');g.save();g.globalCompositeOperation='source-over';g.globalAlpha=1;g.clearRect(0,0,tg.width,tg.height);g.drawImage(drag.snap,0,0);g.restore();
+ drag.last=drag.an;fn(p);drag.last=p;return true}
+['pointerdown','pointermove','pointerup'].forEach(t=>addEventListener(t,e=>{SHF=e.shiftKey},true));
+addEventListener('keydown',e=>{if(e.key=='Shift'&&!SHF){SHF=true;shfRedraw()}},true);
+addEventListener('keyup',e=>{if(e.key=='Shift'){SHF=false;shfRedraw()}},true);
+addEventListener('blur',()=>{SHF=false});
+function shfRedraw(){if(drag&&drag.e&&(T=='rect'||T=='ellipse'||T=='line')){ovr();shape(ox,drag.s,drag.e,0,0)}}
 st.onpointerdown=e=>{st.setPointerCapture(e.pointerId);
  if(CRS&&e.button==0&&!sp){crsPick(pt(e));return}
  if(e.button==1||sp||T=='hand'){drag={pan:1,x:e.clientX,y:e.clientY,vx:V.x,vy:V.y};return}
- const p=pt(e);if(T=='move'&&e.button==0&&AUTOSEL&&!SEL)autoPick(p,e);if(!A||(A.lock&&(T=='move'||T=='xf')))return;drag={s:p,last:p,l:{x:A.x,y:A.y},md:md(e)};
+ const p=pt(e);if(T=='move'&&e.button==0&&AUTOSEL&&!SEL)autoPick(p,e);if(!A||(A.lock&&(T=='move'||T=='xf')))return;drag={s:p,last:p,l:{x:A.x,y:A.y},md:md(e),sh0:e.shiftKey,ax:null,an:null};
  if(SEL&&(T=='brush'||T=='eraser'||T=='bucket'))bk=cl(A.c);
  if((T=='sel'||T=='esel'||T=='lasso')&&SEL&&drag.md=='new'){const px=p.x|0,py=p.y|0;if(px>=0&&py>=0&&px<D.w&&py<D.h&&SEL.m.getContext('2d').getImageData(px,py,1,1).data[3]>127){drag.inside=1;drag.msel=cl(SEL.m);drag.moved=0;return}}
  if(NT.has(T)){newDown(p,e)}else if(T=='move'&&SEL){addLayer('Dipindah',lift(1));SEL=null;ovr();drag.l={x:A.x,y:A.y}}
  else if(T=='xf'){const w=A.c.width,h=A.c.height,r=14/V.s,cs=[[A.x,A.y],[A.x+w,A.y],[A.x+w,A.y+h],[A.x,A.y+h]],i=cs.findIndex(c=>Math.abs(c[0]-p.x)<r&&Math.abs(c[1]-p.y)<r);if(i>=0)drag.xf={i,o:A.c,x:A.x,y:A.y,w,h};else drag.mv=1}
  else if(T=='qsel'){render();drag.im=cx.getImageData(0,0,D.w,D.h);if(drag.md=='new'||!SEL)SEL={m:mkm(()=>{})};qstep(p);ovr()}
- else if(T=='heal'){drag.pts=[p]}
+ else if(T=='heal'){drag.pts=(e.shiftKey&&lspOK())?[{x:LSP.x,y:LSP.y},p]:[p]}
  else if(T=='wand'){const m=wand(p.x,p.y,+tol.value);if(m)comb(featherM(m,$('#sfea').value),md(e));drag=null}
- else if(T=='brush'||T=='eraser')stroke(p,p);
+ else if(T=='brush'||T=='eraser'){if(e.shiftKey&&lspOK())stroke(LSP,p);else stroke(p,p)}
  else if(T=='eyedrop'){if(p.x>=0&&p.y>=0&&p.x<D.w&&p.y<D.h){const d=cx.getImageData(p.x|0,p.y|0,1,1).data;col.value='#'+[...d].slice(0,3).map(v=>v.toString(16).padStart(2,'0')).join('')}drag=null}
  else if(T=='bucket'){flood(A,p.x-A.x,p.y-A.y,col.value,+tol.value);clipSel();bk=null;push();render();drag=null}
  else if(T=='text'){drag=null;textStart(p)}};
 st.onpointermove=e=>{if(!drag)return;
  if(drag.pan){V.x=drag.vx+e.clientX-drag.x;V.y=drag.vy+e.clientY-drag.y;tf();return}
  const p=pt(e);if(NT.has(T)){newMove(p,e);return}
- if(drag.msel){const dx=Math.round(p.x-drag.s.x),dy=Math.round(p.y-drag.s.y);if(dx||dy)drag.moved=1;const n=mk(D.w,D.h);n.getContext('2d').drawImage(drag.msel,dx,dy);SEL={m:n};ovr();return}
+ if(drag.msel){const q=e.shiftKey?snap45(drag.s,p):p,dx=Math.round(q.x-drag.s.x),dy=Math.round(q.y-drag.s.y);if(dx||dy)drag.moved=1;const n=mk(D.w,D.h);n.getContext('2d').drawImage(drag.msel,dx,dy);SEL={m:n};ovr();return}
  if(T=='qsel'){const a=drag.last,n=Math.max(1,Math.ceil(Math.hypot(p.x-a.x,p.y-a.y)/Math.max(2,sz.value/4)));for(let i=1;i<=n;i++)qstep({x:a.x+(p.x-a.x)*i/n,y:a.y+(p.y-a.y)*i/n});drag.last=p;ovr()}
- else if(T=='heal'){drag.pts.push(p);ovr();ox.save();ox.strokeStyle='rgba(255,0,80,.45)';ox.lineWidth=+sz.value;ox.lineCap=ox.lineJoin='round';ox.beginPath();drag.pts.forEach((q,i)=>i?ox.lineTo(q.x,q.y):ox.moveTo(q.x,q.y));ox.lineTo(p.x+.01,p.y);ox.stroke();ox.restore()}
- else if(T=='brush'||T=='eraser'){stroke(drag.last,p);drag.last=p}
+ else if(T=='heal'){const hq=lockP(p,e);if(hq.x==drag.last.x&&hq.y==drag.last.y)return;drag.last=hq;drag.pts.push(hq);ovr();ox.save();ox.strokeStyle='rgba(255,0,80,.45)';ox.lineWidth=+sz.value;ox.lineCap=ox.lineJoin='round';ox.beginPath();drag.pts.forEach((q,i)=>i?ox.lineTo(q.x,q.y):ox.moveTo(q.x,q.y));ox.lineTo(hq.x+.01,hq.y);ox.stroke();ox.restore()}
+ else if(T=='brush'||T=='eraser'){const bq=lockP(p,e);if(bq.x!=drag.last.x||bq.y!=drag.last.y){stroke(drag.last,bq);drag.last=bq}}
  else if(drag.xf){const f=drag.xf,ax=f.i==0||f.i==3?f.x+f.w:f.x,ay=f.i<2?f.y+f.h:f.y;let w=Math.abs(p.x-ax),h=Math.abs(p.y-ay);if(!e.shiftKey){const s=Math.max(w/f.w,h/f.h);w=f.w*s;h=f.h*s}w=Math.max(4,w);h=Math.max(4,h);A.c=rs(f.o,w,h);A.x=Math.round(f.i==0||f.i==3?ax-w:ax);A.y=Math.round(f.i<2?ay-h:ay);render();ovr()}
- else if(T=='move'||drag.mv){if(!drag.ls)drag.ls=[...new Set([...SELL,...(A.isGroup?L.filter(x=>x.inGroup===A.id):[])])].filter(l=>l!==A&&!l.lock).map(l=>[l,l.x,l.y]);A.x=Math.round(drag.l.x+p.x-drag.s.x);A.y=Math.round(drag.l.y+p.y-drag.s.y);drag.ls.forEach(([l,x,y])=>{l.x=x+Math.round(p.x-drag.s.x);l.y=y+Math.round(p.y-drag.s.y)});render();ovr()}
- else{ovr();drag.e=p;if(T=='lasso'){(drag.pts=drag.pts||[drag.s]).push(p);ox.save();ox.shadowColor='#000';ox.shadowBlur=2;ox.lineWidth=Math.max(1,1/V.s);ox.setLineDash([5,4]);ox.strokeStyle='#fff';ox.beginPath();drag.pts.forEach((q,i)=>i?ox.lineTo(q.x,q.y):ox.moveTo(q.x,q.y));ox.stroke();ox.restore()}else if(T=='sel'||T=='esel'){ox.save();ox.shadowColor='#000';ox.shadowBlur=2;ox.lineWidth=Math.max(1,1/V.s);ox.setLineDash([5,4]);ox.strokeStyle='#fff';ox.beginPath();selPath(ox,drag.s,p,drag.mod={sh:e.shiftKey,al:e.altKey});ox.stroke();ox.restore()}else if(T=='crop'){ox.save();ox.fillStyle='#0008';ox.fillRect(0,0,D.w,D.h);ox.clearRect(drag.s.x,drag.s.y,p.x-drag.s.x,p.y-drag.s.y);ox.setLineDash([6,4]);ox.strokeStyle='#fff';ox.strokeRect(drag.s.x,drag.s.y,p.x-drag.s.x,p.y-drag.s.y);ox.restore()}else shape(ox,drag.s,p,0,0)}};
-st.onpointerup=e=>{if(!drag)return;const d=drag;drag=null;if(d.pan)return;if(NT.has(T)){newUp(d,pt(e),e);return}const p=d.e||pt(e);bk=null;ovr();
+ else if(T=='move'||drag.mv){if(!drag.ls)drag.ls=[...new Set([...SELL,...(A.isGroup?L.filter(x=>x.inGroup===A.id):[])])].filter(l=>l!==A&&!l.lock).map(l=>[l,l.x,l.y]);const mq=e.shiftKey?snap45(drag.s,p):p;A.x=Math.round(drag.l.x+mq.x-drag.s.x);A.y=Math.round(drag.l.y+mq.y-drag.s.y);drag.ls.forEach(([l,x,y])=>{l.x=x+Math.round(mq.x-drag.s.x);l.y=y+Math.round(mq.y-drag.s.y)});render();ovr()}
+ else{ovr();drag.e=p;if(T=='lasso'){drag.pts=drag.pts||[drag.s];const lq=lockP(p,e);drag.last=lq;drag.pts.push(lq);ox.save();ox.shadowColor='#000';ox.shadowBlur=2;ox.lineWidth=Math.max(1,1/V.s);ox.setLineDash([5,4]);ox.strokeStyle='#fff';ox.beginPath();drag.pts.forEach((q,i)=>i?ox.lineTo(q.x,q.y):ox.moveTo(q.x,q.y));ox.stroke();ox.restore()}else if(T=='sel'||T=='esel'){ox.save();ox.shadowColor='#000';ox.shadowBlur=2;ox.lineWidth=Math.max(1,1/V.s);ox.setLineDash([5,4]);ox.strokeStyle='#fff';ox.beginPath();selPath(ox,drag.s,p,drag.mod={sh:e.shiftKey,al:e.altKey});ox.stroke();ox.restore()}else if(T=='crop'){ox.save();ox.fillStyle='#0008';ox.fillRect(0,0,D.w,D.h);ox.clearRect(drag.s.x,drag.s.y,p.x-drag.s.x,p.y-drag.s.y);ox.setLineDash([6,4]);ox.strokeStyle='#fff';ox.strokeRect(drag.s.x,drag.s.y,p.x-drag.s.x,p.y-drag.s.y);ox.restore()}else shape(ox,drag.s,p,0,0)}};
+st.onpointerup=e=>{if(!drag)return;const d=drag;drag=null;if(d.pan)return;if((T=='brush'||T=='eraser'||T=='heal'||(T=='clone'&&d.cl))&&d.last)LSP={x:d.last.x,y:d.last.y,l:A,d:cur};if(NT.has(T)){newUp(d,pt(e),e);return}const p=d.e||pt(e);bk=null;ovr();
  if(d.xf||d.mv){push();ovr();return}
  if(T=='qsel'){qFinish();return}
  if(T=='heal'){if(d.pts){heal(A,d.pts,+sz.value/2);push();render()}return}
@@ -920,7 +950,7 @@ $('#lDn').onclick=()=>{const i=L.indexOf(A);if(i>0){[L[i],L[i-1]]=[L[i-1],L[i]];
 $('#lFlat').onclick=()=>{render();const c=cl(cv);L=[];addLayer('Gabungan',c);push();sync()};
 addEventListener('keydown',e=>{if(document.body.classList.contains('home'))return;if(/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)&&e.target.type!='range')return;
  const k=e.key.toLowerCase();
- if(e.ctrlKey||e.metaKey){if(k=='['||k==']'){e.preventDefault();sz.value=k=='['?Math.max(1,+sz.value-4):+sz.value+4;sz.dispatchEvent(new Event('input'));return}if(k=='z'){e.preventDefault();e.shiftKey?redo():undo()}else if(k=='y'){e.preventDefault();redo()}else if(k=='d'){e.preventDefault();selOp.none()}else if(k=='a'){e.preventDefault();selOp.all()}else if(k=='j'){e.preventDefault();selOp.copy()}else if(k=='g'){e.preventDefault();e.shiftKey?ungroup():createGroup()}return}
+ if(e.ctrlKey||e.metaKey){if(k=='['||k==']'){e.preventDefault();sz.value=k=='['?Math.max(1,+sz.value-4):+sz.value+4;sz.dispatchEvent(new Event('input'));return}if(k=='z'){e.preventDefault();e.shiftKey?redo():undo()}else if(k=='y'){e.preventDefault();redo()}else if(k=='d'){e.preventDefault();selOp.none()}else if(k=='a'){e.preventDefault();selOp.all()}else if(k=='j'){e.preventDefault();selOp.copy()}else if(k=='g'){e.preventDefault();e.shiftKey?ungroup():createGroup()}else if(k=='e'&&!e.shiftKey&&!e.altKey){e.preventDefault();mergeLayers()}return}
  if(k==' '){sp=true;e.preventDefault();return}
  if(k=='delete'){selOp.del();return}
  if(k=='w'){const q=['osel','qsel','wand'],i=q.indexOf(T);setT(i<0?(GR[2].cur||'osel'):q[(i+1)%3]);return}
@@ -1029,7 +1059,7 @@ const SV=(t,ty,b)=>()=>{cur.type=ty;addRecent(cur);$(b).click()};
 const M=[['File',()=>[['Baru…',openNew,'',0],['Buka…',act('#bOpen'),'',0],['Tempatkan gambar…',act('#bAdd')],'-',['Simpan sebagai PNG',SV(0,'PNG','#bPng')],['Simpan sebagai JPG',SV(0,'JPEG','#bJpg')],'-',['Tutup',()=>closeDoc(docs.indexOf(cur))],['Tutup semua',()=>{while(docs.length){const n=docs.length;closeDoc(0);if(docs.length==n)break}}],'-',['Beranda (Home)',goHome,'',0]]],
 ['Edit',()=>[['Undo',undo,'Ctrl+Z'],['Redo',redo,'Ctrl+Y'],'-',['Isi seleksi dengan warna',selOp.fill],['Hapus isi seleksi',selOp.del,'Del'],'-',['Transformasi bebas',tool('xf'),'X']]],
 ['Image',()=>[['Ukuran gambar…',ask('Skala seluruh gambar (%)','50','#sc','#xD')],'-',['Putar 90°',act('#bRot')],['Balik horizontal',act('#bFH')],['Balik vertikal',act('#bFV')],'-',['Crop',tool('crop'),'C']]],
-['Layer',()=>[['Layer baru',act('#lAdd')],['Duplikat layer',act('#lDup')],['Hapus layer',act('#lDel')],['Grup layer (folder)',createGroup,'Ctrl+G'],['Ungroup (bubarkan grup)',()=>ungroup(),'Shift+Ctrl+G'],['Kunci / buka kunci layer',()=>{A.lock=A.lock?0:1;ui()}],'-',['Naikkan',act('#lUp')],['Turunkan',act('#lDn')],'-',['Layer dari seleksi',selOp.copy,'Ctrl+J'],['Skala layer…',ask('Skala layer (%)','50','#sc','#xL')],['Pas kanvas',act('#xF')],'-',['Terapkan penyesuaian ke piksel',act('#bBake')],['Ratakan gambar',act('#lFlat')]]],
+['Layer',()=>[['Layer baru',act('#lAdd')],['Duplikat layer',act('#lDup')],['Hapus layer',act('#lDel')],['Grup layer (folder)',createGroup,'Ctrl+G'],['Ungroup (bubarkan grup)',()=>ungroup(),'Shift+Ctrl+G'],['Kunci / buka kunci layer',()=>{A.lock=A.lock?0:1;ui()}],'-',['Naikkan',act('#lUp')],['Turunkan',act('#lDn')],['Gabung layer (Merge Down)',mergeLayers,'Ctrl+E'],'-',['Layer dari seleksi',selOp.copy,'Ctrl+J'],['Skala layer…',ask('Skala layer (%)','50','#sc','#xL')],['Pas kanvas',act('#xF')],'-',['Terapkan penyesuaian ke piksel',act('#bBake')],['Ratakan gambar',act('#lFlat')]]],
 ['Type',()=>[['Alat teks',tool('text'),'T'],['Ukuran teks…',()=>askBox('Ukuran teks (px)',fsz.value,v=>{if(v){fsz.value=v;setT('text')}})],'-',...[...fam.options].map(o=>['Font: '+o.text,()=>{fam.value=o.value;setT('text')}])]],
 ['Select',()=>[['Semua',selOp.all,'Ctrl+A'],['Batal pilih',selOp.none,'Ctrl+D'],['Balik seleksi',selOp.inv],'-',['Pilih kotak',tool('sel'),'M'],['Pilih elips',tool('esel'),'N'],['Lasso',tool('lasso'),'Q'],['Magic wand',tool('wand'),'W']]],
 ['Filter',()=>[['Hitam putih',flt(f=>f.g=100)],['Sepia',flt(f=>f.se=100)],['Negatif',flt(f=>f.i=100)],'-',['Blur 4 px',flt(f=>f.bl=4)],['Blur 10 px',flt(f=>f.bl=10)],'-',['Lebih terang',flt(f=>f.b=Math.min(200,f.b+20))],['Lebih gelap',flt(f=>f.b=Math.max(0,f.b-20))],['Kontras +',flt(f=>f.c=Math.min(200,f.c+20))],['Kontras −',flt(f=>f.c=Math.max(0,f.c-20))],['Saturasi +',flt(f=>f.s=Math.min(200,f.s+20))],'-',['Reset filter',()=>{A.f=F0();push();sync()}]]],
@@ -1122,7 +1152,7 @@ const SELX=SEP+['#sAll|Semua','#sNone|Batal pilih','#sInv|Balik','#sDel|Hapus is
 const AL=(v,p)=>`<button class="ib" data-fn="al" data-v="${v}" title="Rata ${v}">${oic(p)}</button>`;
 const FONTS=[...fam.options].map(o=>o.value);
 const BARS={
- move:()=>`<label class="ob" title="Klik di kanvas langsung memilih layer teratas yang tidak terkunci dan pikselnya tidak transparan" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="autoSelChk" ${AUTOSEL?'checked':''}> Auto-Select</label>`+hint('Seret untuk memindahkan layer atau isi seleksi')+SEP+['#bFH|⇋ Balik H','#bFV|⇅ Balik V','#bRot|⟳ Putar 90°'].map(x=>{const[a,b]=x.split('|');return`<button class="ob" data-click="${a}">${b}</button>`}).join(''),
+ move:()=>`<label class="ob" title="Klik di kanvas langsung memilih layer teratas yang tidak terkunci dan pikselnya tidak transparan" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="autoSelChk" ${AUTOSEL?'checked':''}> Auto-Select</label>`+hint('Seret untuk memindahkan layer atau isi seleksi · Shift = lurus (45°)')+SEP+['#bFH|⇋ Balik H','#bFV|⇅ Balik V','#bRot|⟳ Putar 90°'].map(x=>{const[a,b]=x.split('|');return`<button class="ob" data-click="${a}">${b}</button>`}).join(''),
  xf:()=>`<label class="ol">Skala<input type="number" class="nb" data-bind="#sc" min="1" max="800">%</label><button class="ob" data-click="#xL">Skala layer</button><button class="ob" data-click="#xD">Skala gambar</button><button class="ob" data-click="#xF">Pas kanvas</button>`+SEP+hint('Tarik sudut layer · Shift = bebas'),
  sel:()=>MI(RCT)+SEP+`<label class="ol" title="Feather (px): tepi seleksi dilembutkan">Feather<input type="number" class="nb" data-bind="#sfea" min="0" max="250">px</label>`+SELX+SEP+hint('Shift = tambah · Alt = kurangi · Shift+Alt = irisan · saat menyeret: Shift = persegi, Alt = dari tengah · seret di dalam seleksi = geser seleksi'),
  esel:()=>MI(RCT)+SEP+`<label class="ol" title="Feather (px): tepi seleksi dilembutkan">Feather<input type="number" class="nb" data-bind="#sfea" min="0" max="250">px</label>`+SELX+SEP+hint('Shift = tambah · Alt = kurangi · Shift+Alt = irisan · saat menyeret: Shift = lingkaran, Alt = dari tengah · seret di dalam seleksi = geser seleksi'),
@@ -1132,9 +1162,9 @@ const BARS={
  osel:()=>MI(OBJI)+SEP+`<label class="ol">Mode<select data-osm><option value="rect" ${OSM=='rect'?'selected':''}>Rectangle</option><option value="lasso" ${OSM=='lasso'?'selected':''}>Lasso</option></select></label>`+SELX+SEP+hint('Seret kotak/lasso di sekeliling objek · Klik = AI (butuh API key) · Ctrl = balik + ⇄ −'),
  crop:()=>hint('Seret pada kanvas untuk memilih area crop, lalu konfirmasi'),
  eyedrop:()=>clr+SEP+hint('Klik pada kanvas untuk mengambil warna'),
- heal:()=>pk('heal','Brush Picker')+SEP+hint('Gosok pada noda yang ingin dihapus'),
- brush:()=>pk('brush','Brush Picker')+rng('Opasitas','#op',1,100)+SEP+clr,
- eraser:()=>pk('eraser','Brush Picker')+rng('Opasitas','#op',1,100),
+ heal:()=>pk('heal','Brush Picker')+SEP+hint('Gosok pada noda yang ingin dihapus · Shift+klik = garis lurus'),
+ brush:()=>pk('brush','Brush Picker')+rng('Opasitas','#op',1,100)+SEP+clr+hint('Shift+klik = garis lurus dari titik terakhir · Shift+seret = lurus sesuai arah seretan'),
+ eraser:()=>pk('eraser','Brush Picker')+rng('Opasitas','#op',1,100)+SEP+hint('Shift+klik = garis lurus dari titik terakhir · Shift+seret = lurus sesuai arah seretan'),
  bucket:()=>clr+rng('Toleransi','#tol',0,100)+rng('Opasitas','#op',1,100),
  rect:()=>clr+`<label class="ol">Isi<input type="checkbox" data-bind="#fillc"></label>`+rng('Garis','#sz',1,200)+rng('Opasitas','#op',1,100),
  ellipse:()=>clr+`<label class="ol">Isi<input type="checkbox" data-bind="#fillc"></label>`+rng('Garis','#sz',1,200)+rng('Opasitas','#op',1,100),
@@ -1684,7 +1714,7 @@ const CRO={mode:'free',rw:0,rh:0,del:true,fill:'b',ov:'thirds',sh:true,shv:55},G
 let CR=null,CRdoc=null,XS=null,LQ=null,CB=null;
 /* ---------- Crop ---------- */
 function cropReset(){CR={x:0,y:0,w:D.w,h:D.h};CRdoc=cur}
-function cropAsp(){if(CRO.mode=='orig')return D.w/D.h;if((CRO.mode=='ratio'||CRO.mode=='wh')&&CRO.rw>0&&CRO.rh>0)return CRO.rw/CRO.rh;return 0}
+function cropAsp(){if(CRO.mode=='orig')return D.w/D.h;if((CRO.mode=='ratio'||CRO.mode=='wh')&&CRO.rw>0&&CRO.rh>0)return CRO.rw/CRO.rh;return SHF?1:0}
 function cropFit(){const a=cropAsp();if(!a||!CR)return;const cx0=CR.x+CR.w/2,cy0=CR.y+CR.h/2;let w=CR.w,h=CR.h;if(w/h>a)w=h*a;else h=w/a;CR={x:cx0-w/2,y:cy0-h/2,w,h}}
 function cropBox(){if(CB&&CB.isConnected)return CB;CB=document.createElement('div');CB.id='cropbox';CB.innerHTML='<svg class="cg" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>'+['nw','n','ne','e','se','s','sw','w'].map(k=>`<i class="chd ${k}"></i>`).join('');wrap.append(CB);return CB}
 const OVL={thirds:[33.333,66.667],grid:[16.667,33.333,50,66.667,83.333],golden:[38.2,61.8],diagonal:[],none:[]};
@@ -1696,7 +1726,7 @@ function cropDraw(){const b=cropBox();if(T!='crop'||!cur||document.body.classLis
 function cropDown(p,e){if(!CR||CRdoc!==cur)cropReset();const r=12/V.s,x0=CR.x,x1=CR.x+CR.w,y0=CR.y,y1=CR.y+CR.h,xm=(x0+x1)/2,ym=(y0+y1)/2;
  const hs=[[x0,y0,-1,-1],[xm,y0,0,-1],[x1,y0,1,-1],[x1,ym,1,0],[x1,y1,1,1],[xm,y1,0,1],[x0,y1,-1,1],[x0,ym,-1,0]],h=hs.find(q=>Math.abs(q[0]-p.x)<r&&Math.abs(q[1]-p.y)<r);
  drag.cr=h?{k:'rs',ix:h[2],iy:h[3],R:{...CR}}:(p.x>x0&&p.x<x1&&p.y>y0&&p.y<y1?{k:'mv',R:{...CR}}:{k:'new',R:null})}
-function cropMove(p){const c=drag.cr,s=drag.s,a=cropAsp();if(c.k=='rs'){st.style.cursor=c.ix&&c.iy?(c.ix*c.iy>0?'nwse-resize':'nesw-resize'):c.ix?'ew-resize':'ns-resize'}else if(c.k=='mv'){st.style.cursor='move'}if(c.k=='mv'){CR={...c.R,x:c.R.x+p.x-s.x,y:c.R.y+p.y-s.y}}
+function cropMove(p){const c=drag.cr,s=drag.s,a=cropAsp();if(c.k=='rs'){st.style.cursor=c.ix&&c.iy?(c.ix*c.iy>0?'nwse-resize':'nesw-resize'):c.ix?'ew-resize':'ns-resize'}else if(c.k=='mv'){st.style.cursor='move'}if(c.k=='mv'){const cq=SHF?snap45(s,p):p;CR={...c.R,x:c.R.x+cq.x-s.x,y:c.R.y+cq.y-s.y}}
  else if(c.k=='new'){let w=p.x-s.x,h=p.y-s.y;if(a){if(Math.abs(w)/a>Math.abs(h))h=Math.sign(h||1)*Math.abs(w)/a;else w=Math.sign(w||1)*Math.abs(h)*a}CR={x:Math.min(s.x,s.x+w),y:Math.min(s.y,s.y+h),w:Math.max(4,Math.abs(w)),h:Math.max(4,Math.abs(h))}}
  else{const R=c.R;let x0=R.x,x1=R.x+R.w,y0=R.y,y1=R.y+R.h;if(c.ix<0)x0=Math.min(p.x,x1-4);if(c.ix>0)x1=Math.max(p.x,x0+4);if(c.iy<0)y0=Math.min(p.y,y1-4);if(c.iy>0)y1=Math.max(p.y,y0+4);
   if(a){let w=x1-x0,h=y1-y0;if(c.ix&&c.iy){if(w/a>h)h=w/a;else w=h*a;if(c.ix<0)x0=x1-w;else x1=x0+w;if(c.iy<0)y0=y1-h;else y1=y0+h}else if(c.ix){h=w/a;const cy0=(R.y+R.y+R.h)/2;y0=cy0-h/2;y1=cy0+h/2;if(c.ix<0)x0=x1-w;else x1=x0+w}else{w=h*a;const cx0=R.x+R.w/2;x0=cx0-w/2;x1=cx0+w/2;if(c.iy<0)y0=y1-h;else y1=y0+h}}
@@ -1714,11 +1744,11 @@ function straighten(){askBox('Luruskan: sudut rotasi (°, − = berlawanan jarum
 /* ---------- Pen ---------- */
 const PEN=()=>cur.pen||(cur.pen={pts:[],closed:false});
 function penPath(g,pt,closed,dx=0,dy=0){g.beginPath();pt.forEach((a,i)=>{if(!i){g.moveTo(a.x+dx,a.y+dy);return}const b=pt[i-1];g.bezierCurveTo(b.x+b.hx+dx,b.y+b.hy+dy,a.x-a.hx+dx,a.y-a.hy+dy,a.x+dx,a.y+dy)});if(closed&&pt.length>1){const a=pt[pt.length-1],b=pt[0];g.bezierCurveTo(a.x+a.hx+dx,a.y+a.hy+dy,b.x-b.hx+dx,b.y-b.hy+dy,b.x+dx,b.y+dy);g.closePath()}}
-function penDown(p){const P0=PEN(),r=10/V.s,pt=P0.pts;
+function penDown(p,e){const P0=PEN(),r=10/V.s,pt=P0.pts;
  if(pt.length>2&&!P0.closed&&Math.hypot(pt[0].x-p.x,pt[0].y-p.y)<r){P0.closed=true;drag.pen={k:'none'};ovr();return}
  const i=pt.findIndex(a=>Math.hypot(a.x-p.x,a.y-p.y)<r);if(i>=0){drag.pen={k:'mv',i,x:pt[i].x,y:pt[i].y};return}
- if(P0.closed)return;pt.push({x:p.x,y:p.y,hx:0,hy:0});drag.pen={k:'new',i:pt.length-1}}
-function penMove(p){const c=drag.pen,pt=PEN().pts;if(!c)return;if(c.k=='new'){pt[c.i].hx=p.x-pt[c.i].x;pt[c.i].hy=p.y-pt[c.i].y}else if(c.k=='mv'){pt[c.i].x=c.x+p.x-drag.s.x;pt[c.i].y=c.y+p.y-drag.s.y}ovr()}
+ if(P0.closed)return;if(e&&e.shiftKey&&pt.length){const sq=snap45(pt[pt.length-1],p);p={x:sq.x,y:sq.y}}pt.push({x:p.x,y:p.y,hx:0,hy:0});drag.pen={k:'new',i:pt.length-1}}
+function penMove(p,e){const c=drag.pen,pt=PEN().pts;if(!c)return;const sh=e&&e.shiftKey;if(c.k=='new'){const q=sh?snap45(pt[c.i],p):p;pt[c.i].hx=q.x-pt[c.i].x;pt[c.i].hy=q.y-pt[c.i].y}else if(c.k=='mv'){const q=sh?snap45(drag.s,p):p;pt[c.i].x=c.x+q.x-drag.s.x;pt[c.i].y=c.y+q.y-drag.s.y}ovr()}
 function penDraw(){const P0=PEN();if(!P0.pts.length)return;const s=1/V.s;ox.save();ox.lineWidth=1.6*s;ox.strokeStyle='#4c8dff';penPath(ox,P0.pts,P0.closed);ox.stroke();
  P0.pts.forEach((a,i)=>{const last=i==P0.pts.length-1;if(last&&(a.hx||a.hy)){ox.beginPath();ox.moveTo(a.x-a.hx,a.y-a.hy);ox.lineTo(a.x+a.hx,a.y+a.hy);ox.lineWidth=s;ox.stroke();for(const q of[-1,1]){ox.beginPath();ox.arc(a.x+q*a.hx,a.y+q*a.hy,3*s,0,7);ox.fillStyle='#4c8dff';ox.fill()}}
   ox.fillStyle=i==0?'#4c8dff':'#fff';ox.strokeStyle='#4c8dff';ox.lineWidth=s*1.4;ox.fillRect(a.x-3.5*s,a.y-3.5*s,7*s,7*s);ox.strokeRect(a.x-3.5*s,a.y-3.5*s,7*s,7*s)});ox.restore()}
@@ -1747,7 +1777,7 @@ function bboxOf(m){const w=m.width,h=m.height,d=m.getContext('2d').getImageData(
 function xsInit(){const bb=bboxOf(SEL.m);if(!bb){toast('Seleksi kosong');setT('sel');return}XS={m:cl(SEL.m),bb,cur:{...bb}}}
 function xsApply(){const c=XS.cur,m=mk(D.w,D.h);m.getContext('2d').drawImage(XS.m,XS.bb.x,XS.bb.y,XS.bb.w,XS.bb.h,c.x,c.y,c.w,c.h);SEL={m};ovr()}
 function xsDown(p){const c=XS.cur,r=14/V.s,cs=[[c.x,c.y],[c.x+c.w,c.y],[c.x+c.w,c.y+c.h],[c.x,c.y+c.h]],i=cs.findIndex(q=>Math.abs(q[0]-p.x)<r&&Math.abs(q[1]-p.y)<r);drag.xs={i,R:{...c}}}
-function xsMove(p){const d=drag.xs,R=d.R;if(d.i<0){XS.cur={...R,x:R.x+p.x-drag.s.x,y:R.y+p.y-drag.s.y}}else{let x0=R.x,y0=R.y,x1=R.x+R.w,y1=R.y+R.h;if(d.i==0||d.i==3)x0=Math.min(p.x,x1-2);else x1=Math.max(p.x,x0+2);if(d.i<2)y0=Math.min(p.y,y1-2);else y1=Math.max(p.y,y0+2);let w=x1-x0,h=y1-y0;if(!lastShift){const k=Math.max(w/R.w,h/R.h);w=R.w*k;h=R.h*k;if(d.i==0||d.i==3)x0=x1-w;else x1=x0+w;if(d.i<2)y0=y1-h;else y1=y0+h}XS.cur={x:x0,y:y0,w:x1-x0,h:y1-y0}}xsApply()}
+function xsMove(p){const d=drag.xs,R=d.R;if(d.i<0){const xq=lastShift?snap45(drag.s,p):p;XS.cur={...R,x:R.x+xq.x-drag.s.x,y:R.y+xq.y-drag.s.y}}else{let x0=R.x,y0=R.y,x1=R.x+R.w,y1=R.y+R.h;if(d.i==0||d.i==3)x0=Math.min(p.x,x1-2);else x1=Math.max(p.x,x0+2);if(d.i<2)y0=Math.min(p.y,y1-2);else y1=Math.max(p.y,y0+2);let w=x1-x0,h=y1-y0;if(!lastShift){const k=Math.max(w/R.w,h/R.h);w=R.w*k;h=R.h*k;if(d.i==0||d.i==3)x0=x1-w;else x1=x0+w;if(d.i<2)y0=y1-h;else y1=y0+h}XS.cur={x:x0,y:y0,w:x1-x0,h:y1-y0}}xsApply()}
 let lastShift=false;addEventListener('pointermove',e=>lastShift=e.shiftKey,true);
 function xsDraw(){const c=XS.cur,s=1/V.s;ox.save();ox.strokeStyle='#fff';ox.setLineDash([5*s,4*s]);ox.lineWidth=s;ox.strokeRect(c.x,c.y,c.w,c.h);ox.setLineDash([]);ox.fillStyle='#fff';ox.strokeStyle='#000';for(const[x,y]of[[c.x,c.y],[c.x+c.w,c.y],[c.x+c.w,c.y+c.h],[c.x,c.y+c.h]]){ox.fillRect(x-4*s,y-4*s,8*s,8*s);ox.strokeRect(x-4*s,y-4*s,8*s,8*s)}ox.restore()}
 /* ---------- Liquify ---------- */
@@ -1763,9 +1793,9 @@ function lqEnd(apply){if(!LQ)return;const q=LQ;LQ=null;if(!apply&&q.dirty){putLa
 /* ---------- Overlay + hook ---------- */
 function ovrX(){if(QM&&SEL){if(!SEL.q||SEL.qm!==SEL.m){const t=mk(D.w,D.h),g=t.getContext('2d');g.fillStyle='rgba(255,40,40,.5)';g.fillRect(0,0,D.w,D.h);g.globalCompositeOperation='destination-out';g.drawImage(SEL.m,0,0);SEL.q=t;SEL.qm=SEL.m}ox.drawImage(SEL.q,0,0)}
  if(!cur)return;if(T=='pen')penDraw();if(T=='xsel'&&XS)xsDraw();if(T=='clone')cloneDraw();if(drag&&T=='grad'&&drag.g&&drag.g.b){const s=1/V.s;ox.save();ox.strokeStyle='#fff';ox.shadowColor='#000';ox.shadowBlur=2*s;ox.lineWidth=2*s;ox.beginPath();ox.moveTo(drag.g.a.x,drag.g.a.y);ox.lineTo(drag.g.b.x,drag.g.b.y);ox.stroke();ox.restore()}}
-function newDown(p,e){if(T=='crop')cropDown(p,e);else if(T=='pen')penDown(p,e);else if(T=='grad')drag.g={a:p};else if(T=='clone')cloneDown(p,e);else if(T=='xsel')xsDown(p);else if(T=='liq'){if(!LQ||LQ.l!==A)lqInit();lqDown(p)}}
-function newMove(p){if(!drag)return;if(T=='crop')cropMove(p);else if(T=='pen')penMove(p);else if(T=='grad'){drag.g.b=p;ovr()}else if(T=='clone')cloneMove(p);else if(T=='xsel')xsMove(p);else if(T=='liq'&&LQ)lqMove(p)}
-function newUp(d,p){if(T=='grad'&&d.g)gradApply(d.g.a,p);else if(T=='clone'&&d.cl){clipSel();bk=null;push();render();ovr()}else if(T=='pen'){ovr()}}
+function newDown(p,e){if(T=='crop')cropDown(p,e);else if(T=='pen')penDown(p,e);else if(T=='grad')drag.g={a:p};else if(T=='clone'){cloneDown(p,e);if(drag&&drag.cl&&e.shiftKey&&lspOK()){drag.last={x:LSP.x,y:LSP.y};cloneMove(p)}}else if(T=='xsel')xsDown(p);else if(T=='liq'){if(!LQ||LQ.l!==A)lqInit();lqDown(p)}}
+function newMove(p,e){e=e||{};if(!drag)return;if(T=='crop')cropMove(p);else if(T=='pen')penMove(p,e);else if(T=='grad'){drag.g.b=e.shiftKey?snap45(drag.g.a,p):p;ovr()}else if(T=='clone')cloneMove(lockP(p,e));else if(T=='xsel')xsMove(p);else if(T=='liq'&&LQ){const lq0=lockP(p,e);drag.last=lq0;lqMove(lq0)}}
+function newUp(d,p,e){if(T=='grad'&&d.g)gradApply(d.g.a,e&&e.shiftKey?snap45(d.g.a,p):p);else if(T=='clone'&&d.cl){clipSel();bk=null;push();render();ovr()}else if(T=='pen'){ovr()}}
 function toolHook(old,k){applyCursor(k);if(old=='liq'&&k!='liq')lqEnd(true);if(old=='xsel'&&k!='xsel')XS=null;if(k=='xsel')xsInit();if(k=='crop'){if(!CR||CRdoc!==cur)cropReset()}cropDraw()}
 function afterOpts(){if(T=='crop'){syncCropBar();cropDraw()}}
 /* ---------- Bar ---------- */
