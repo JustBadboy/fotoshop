@@ -3067,6 +3067,93 @@ FN.fontpick=b=>{document.getElementById('fpk')?fntClose():fntOpen(b)};
 #opts .fpb{min-width:150px;max-width:210px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:520px){#fpk .fside{width:96px}#fpk .pke{width:96px}}`;document.head.append(st)})();
 
+/* ===================================================================
+   SISTEM PLUGIN + PLUGIN "TANDA TANGAN & STEMPEL REALISTIS" (v1.0)
+   API:  FSPlugin.register({id,name,version,filters:[{id,name,params,fn}],menu:()=>[[label,fn,shortcut],...]})
+   =================================================================== */
+const FSPlugin=window.FSPlugin={list:[],register(def){this.list.push(def);(def.filters||[]).forEach(f=>F(f.id,f.name,f.params,f.fn))}};
+(function(){
+/*ENGINE_START*/
+const rng=seed=>{let a=(seed*2654435761+12345)>>>0;return()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}};
+const sm=(a,b,x)=>{x=Math.min(1,Math.max(0,(x-a)/(b-a)));return x*x*(3-2*x)};
+/* noise nilai (value noise) halus pada skala tertentu */
+function vnoise(w,h,sc,seed){sc=Math.max(1,sc);const gw=Math.ceil(w/sc)+3,gh=Math.ceil(h/sc)+3,r=rng(seed),g=new Float32Array(gw*gh);for(let i=0;i<g.length;i++)g[i]=r();const o=new Float32Array(w*h);
+ for(let y=0;y<h;y++){const fy=y/sc,y0=fy|0,ty=fy-y0,sy=ty*ty*(3-2*ty);for(let x=0;x<w;x++){const fx=x/sc,x0=fx|0,tx=fx-x0,sx=tx*tx*(3-2*tx),i=y0*gw+x0,a=g[i],b=g[i+1],c=g[i+gw],d=g[i+gw+1];o[y*w+x]=a+(b-a)*sx+(c-a)*sy+(a-b-c+d)*sx*sy}}return o}
+function boxF(s,w,h,r){r=Math.round(r);if(r<1)return s;const t=new Float32Array(s.length),o=new Float32Array(s.length),n=2*r+1;
+ for(let y=0;y<h;y++){const row=y*w;let acc=0;for(let x=-r;x<=r;x++)acc+=s[row+Math.min(w-1,Math.max(0,x))];for(let x=0;x<w;x++){t[row+x]=acc/n;acc+=s[row+Math.min(w-1,x+r+1)]-s[row+Math.max(0,x-r)]}}
+ for(let x=0;x<w;x++){let acc=0;for(let y=-r;y<=r;y++)acc+=t[Math.min(h-1,Math.max(0,y))*w+x];for(let y=0;y<h;y++){o[y*w+x]=acc/n;acc+=t[Math.min(h-1,y+r+1)*w+x]-t[Math.max(0,y-r)*w+x]}}return o}
+const blurF=(s,w,h,r)=>{const k=Math.max(1,Math.round(r*.6));return boxF(boxF(s,w,h,k),w,h,k)};
+const hx=c=>[1,3,5].map(i=>parseInt(c.substr(i,2),16));
+/* mesin tinta: ubah goresan (gelap di atas kertas terang / transparan) jadi tinta nyata */
+function ink(d,w,h,p,K){
+ const N=w*h,cov=new Float32Array(N),thr=p.thr;
+ for(let i=0;i<N;i++){const j=i*4,a=d[j+3];if(a<2)continue;const lum=.299*d[j]+.587*d[j+1]+.114*d[j+2];cov[i]=(a/255)*Math.min(1,Math.max(0,(thr-lum)/Math.max(20,thr*.5)))}
+ const u=Math.max(1,Math.max(w,h)/700),sd=p.seed|0,sc=Math.max(w,h),st=K=='stmp';
+ const bl=blurF(cov,w,h,Math.max(.6,p.soft)*u);
+ const nP=vnoise(w,h,Math.max(8,sc/5),sd+1),nM=vnoise(w,h,Math.max(2,6*u),sd+2),nF=vnoise(w,h,Math.max(1.2,1.6*u),sd+3),nG=vnoise(w,h,Math.max(1.5,3*u),sd+4);
+ const nU=st?vnoise(w,h,Math.max(10,sc/9),sd+5):null,nW=st?vnoise(w,h,Math.max(6,sc/22),sd+6):null;
+ const thick=p.thick/100*.35,pres=(p.pres||0)/100,rough=p.rough/100,grain=p.grain/100,pool=(p.pool||0)/100,op=p.op/100;
+ const unev=st?p.unev/100:0,wear=st?p.wear/100:0,tilt=st?p.tilt/100:0,dbl=st?p.dbl/100:0;
+ const ta=(p.tiltA||0)*Math.PI/180,tc=Math.cos(ta),ts=Math.sin(ta),col=hx(p.col),dx=Math.round(2*u),dy=Math.round(1.5*u);
+ const out=new Uint8ClampedArray(d.length);
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=y*w+x;let b=bl[i];
+  if(dbl&&x>=dx&&y>=dy){const b2=bl[(y-dy)*w+x-dx]*dbl*.5;if(b2>b)b=b2}
+  if(b<.02)continue;
+  const t=thick+(nP[i]-.5)*pres*.45;
+  b+=(nF[i]-.5)*rough*.9+(nG[i]-.5)*rough*.5;
+  let a=Math.min(1,Math.max(0,(b-(.5-t))/.44+.5));if(a<=0)continue;
+  a*=1-pres*.45*nP[i];
+  if(grain){const gd=nG[i]*.6+nF[i]*.4;a*=1-Math.min(1,grain*Math.max(0,(gd-.42)/.58)*1.3)}
+  if(st){if(unev)a*=1-unev*.65*sm(.35,.75,nU[i]);
+   if(wear){const th=1-wear*.5,v=nW[i];if(v>th)a*=1-Math.min(1,(v-th)/.07)*.9}
+   if(tilt){const pr=(x/w-.5)*tc+(y/h-.5)*ts+.5;a*=Math.max(0,1-tilt*pr*.9)}}
+  const k=1-.4*pool*Math.min(1,b*1.2)+(nM[i]-.5)*.1,j=i*4;
+  out[j]=col[0]*k;out[j+1]=col[1]*k;out[j+2]=col[2]*k;out[j+3]=a*op*255}
+ return out}
+/*ENGINE_END*/
+const COL=(k,l,v)=>({k,l,t:'col',v});
+const sigParams=()=>[COL('col','Warna tinta','#1b2a6b'),P('thr','Ambang kertas (abaikan area terang)',60,250,200),P('thick','Ketebalan goresan',-100,100,0),P('pres','Tekanan pena (tebal-tipis)',0,100,35),P('rough','Tepi kasar / tinta meresap',0,100,30),P('grain','Serat kertas (tinta putus-putus)',0,100,20),P('pool','Tinta menggenang (lebih gelap di tengah)',0,100,40),P('soft','Kehalusan tepi',0,4,1,.1),P('op','Opasitas tinta',10,100,95),P('seed','Variasi acak',0,999,7)];
+const stmParams=()=>[COL('col','Warna tinta stempel','#c4262e'),P('thr','Ambang kertas (abaikan area terang)',60,250,190),P('thick','Ketebalan garis',-100,100,5),P('unev','Tinta tidak merata',0,100,45),P('wear','Bagian aus / hilang',0,100,40),P('rough','Tepi kasar / tinta meresap',0,100,40),P('grain','Serat kertas / bintik',0,100,35),P('tilt','Tekanan miring (satu sisi pudar)',0,100,25),P('tiltA','Arah tekanan miring (°)',0,360,30),P('dbl','Cetakan ganda (bayangan)',0,100,20),P('pool','Tinta menggenang',0,100,25),P('soft','Kehalusan tepi',0,4,1,.1),P('op','Opasitas tinta',10,100,90),P('seed','Variasi acak',0,999,3)];
+/* panel filter + opsi: menyatu dengan kertas (Multiply) */
+function openReal(id){if(!A||A.isGroup)return toast('Pilih layer tanda tangan / stempel dulu');
+ filterPanel(FL[id].name,'fixed',[id],{extra:[CHK('mul','Menyatu dengan kertas (blend Multiply)',true),SELO('out','Keluaran',['Layer saat ini','Layer baru'],'Layer saat ini')]});
+ if(FP){const o=FP.o,ok=o.ok;o.ok=st=>{ok(st);if(o.xs&&o.xs.mul&&A&&!A.isGroup){A.m='multiply';push();render();ui()}}}}
+/* ---------- generator stempel ---------- */
+function arcText(g,txt,cx,cy,r,bottom,fs,font,maxA){let f=fs;const meas=()=>[...txt].map(ch=>g.measureText(ch).width);g.font=`bold ${f}px ${font}`;let ws=meas(),tot=ws.reduce((a,b)=>a+b,0)/r;if(tot>maxA){f*=maxA/tot;g.font=`bold ${f}px ${font}`;ws=meas();tot=ws.reduce((a,b)=>a+b,0)/r}
+ let cum=0;const mid=bottom?Math.PI/2:-Math.PI/2;[...txt].forEach((ch,i)=>{const w=ws[i];let ang;if(bottom)ang=mid+tot/2-(cum+w/2)/r;else ang=mid-tot/2+(cum+w/2)/r;cum+=w;g.save();g.translate(cx+r*Math.cos(ang),cy+r*Math.sin(ang));g.rotate(bottom?ang-Math.PI/2:ang+Math.PI/2);g.fillText(ch,0,0);g.restore()})}
+function fitLine(g,txt,maxW,fs,font){g.font=`bold ${fs}px ${font}`;const w=g.measureText(txt).width;if(w>maxW){fs*=maxW/w;g.font=`bold ${fs}px ${font}`}return fs}
+function rr(g,x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath()}
+function makeStamp(o){const z=o.z,W=z,H=o.shape=='Bulat'?z:Math.round(z*(o.shape=='Oval'?.7:.55)),c=mk(W,H),g=c.getContext('2d'),cx=W/2,cy=H/2,lw=Math.max(2,z*.022);
+ g.strokeStyle=g.fillStyle=o.col;g.textAlign='center';g.textBaseline='middle';g.lineJoin='round';
+ const cen=o.mid.split('|').map(s=>s.trim()).filter(Boolean);
+ if(o.shape=='Bulat'){const R=z/2-lw,r1=R-lw*1.8,r2=R*.6;g.lineWidth=lw;g.beginPath();g.arc(cx,cy,R,0,7);g.stroke();g.lineWidth=lw*.45;g.beginPath();g.arc(cx,cy,r1,0,7);g.stroke();g.lineWidth=lw*.6;g.beginPath();g.arc(cx,cy,r2,0,7);g.stroke();
+  const tr=(r1+r2)/2,fs=(r1-r2)*.58;if(o.top)arcText(g,o.top.toUpperCase(),cx,cy,tr,false,fs,o.font,Math.PI*1.45);if(o.bot)arcText(g,o.bot.toUpperCase(),cx,cy,tr+fs*.35,true,fs,o.font,Math.PI*1.1);
+  g.font=`${fs}px ${o.font}`;g.fillText('★',cx-tr,cy);g.fillText('★',cx+tr,cy);
+  const n=cen.length||1,lh=r2*1.5/n;cen.forEach((t,i)=>{const f=fitLine(g,t,r2*1.55,Math.min(lh*.8,R*.3),o.font);g.fillText(t,cx,cy+(i-(n-1)/2)*lh)})}
+ else{g.lineWidth=lw;const m=lw;if(o.shape=='Oval'){g.beginPath();g.ellipse(cx,cy,W/2-m,H/2-m,0,0,7);g.stroke();g.lineWidth=lw*.45;g.beginPath();g.ellipse(cx,cy,W/2-m-lw*1.8,H/2-m-lw*1.8,0,0,7);g.stroke()}
+  else{rr(g,m,m,W-2*m,H-2*m,z*.04);g.stroke();g.lineWidth=lw*.45;rr(g,m+lw*1.8,m+lw*1.8,W-2*m-lw*3.6,H-2*m-lw*3.6,z*.03);g.stroke()}
+  const lines=[o.top&&{t:o.top.toUpperCase(),s:.6},...cen.map(t=>({t,s:1.25})),o.bot&&{t:o.bot.toUpperCase(),s:.6}].filter(Boolean);const tot=lines.reduce((a,l)=>a+l.s,0),usable=H*(o.shape=='Oval'?.62:.7),base=usable/tot;let yy=cy-usable/2;
+  lines.forEach(l=>{const hh=base*l.s;fitLine(g,l.t,W*(o.shape=='Oval'?.7:.8),hh*.82,o.font);g.fillText(l.t,cx,yy+hh/2);yy+=hh})}
+ return c}
+function stampDlg(){if(!cur)return;
+ fsDlg('Buat Stempel',`<label class="fr3">Bentuk<select id="spS"><option>Bulat</option><option>Persegi</option><option>Oval</option></select></label><label class="fr3">Teks atas / instansi<input id="spT" value="PT CONTOH MAJU JAYA"></label><label class="fr3">Teks bawah<input id="spB" value="JAKARTA"></label><label class="fr3">Teks tengah (pisah baris dengan |)<input id="spC" value="LUNAS|12 NOV 2026"></label><label class="fr3">Warna<input id="spK" type="color" value="#c4262e"></label><label class="fr3">Ukuran (px)<input id="spZ" type="number" value="360" min="80" max="1500"></label><label class="fr3">Font<select id="spF"><option>Arial</option><option>Georgia</option><option>Times New Roman</option><option>Courier New</option><option>Impact</option></select></label>`,'Buat',r=>{
+  const q=s=>r.querySelector(s).value,c=makeStamp({shape:q('#spS'),top:q('#spT'),bot:q('#spB'),mid:q('#spC'),col:q('#spK'),z:Math.min(1500,Math.max(80,+q('#spZ')||360)),font:q('#spF')});
+  addLayer('Stempel',c,Math.round((D.w-c.width)/2),Math.round((D.h-c.height)/2));push();sync();toast('Stempel dibuat – atur tampilan realistisnya');setTimeout(()=>openReal('stmp'),50)})}
+/* ---------- generator tanda tangan dari teks ---------- */
+function sigDlg(){if(!cur)return;
+ fsDlg('Buat Tanda Tangan dari Teks',`<label class="fr3">Teks / nama<input id="sgT" value="Budi Santoso"></label><label class="fr3">Font<select id="sgF"><option>Brush Script MT</option><option>Segoe Script</option><option>Lucida Handwriting</option><option>Snell Roundhand</option><option>Apple Chancery</option><option>cursive</option></select></label><label class="fr3">Ukuran (px)<input id="sgZ" type="number" value="160" min="40" max="600"></label><label class="fr3">Kemiringan (°)<input id="sgK" type="number" value="12" min="0" max="40"></label><label class="fr3">Garis bawah<input id="sgU" type="checkbox" checked></label><label class="fr3">Warna<input id="sgC" type="color" value="#111111"></label>`,'Buat',r=>{
+  const q=s=>r.querySelector(s),t=q('#sgT').value.trim();if(!t){toast('Isi teks dulu');return false}
+  const z=Math.min(600,Math.max(40,+q('#sgZ').value||160)),sk=Math.tan((+q('#sgK').value||0)*Math.PI/180),font=`${z}px "${q('#sgF').value}", cursive`,tg=mk(10,10).getContext('2d');tg.font=font;const tw=Math.ceil(tg.measureText(t).width),pad=Math.round(z*.35),W=tw+pad*2+Math.round(z*sk),H=Math.round(z*1.7),c=mk(W,H),g=c.getContext('2d');
+  g.fillStyle=g.strokeStyle=q('#sgC').value;g.font=font;g.textBaseline='alphabetic';g.save();g.translate(pad,H*.62);g.transform(1,0,-sk,1,0,0);g.fillText(t,0,0);g.restore();
+  if(q('#sgU').checked){g.lineWidth=Math.max(2,z*.03);g.lineCap='round';g.beginPath();g.moveTo(pad,H*.78);g.bezierCurveTo(pad+tw*.3,H*.7,pad+tw*.7,H*.86,pad+tw+z*.2,H*.72);g.stroke()}
+  addLayer('Tanda tangan',c,Math.round((D.w-W)/2),Math.round((D.h-H)/2));push();sync();toast('Tanda tangan dibuat – atur tampilan realistisnya');setTimeout(()=>openReal('ttd'),50)})}
+FSPlugin.register({id:'ttd-stempel',name:'Tanda Tangan & Stempel',version:'1.0',
+ filters:[{id:'ttd',name:'Tanda Tangan Realistis',params:sigParams(),fn:(d,w,h,p)=>ink(d,w,h,p,'ttd')},{id:'stmp',name:'Stempel Realistis',params:stmParams(),fn:(d,w,h,p)=>ink(d,w,h,p,'stmp')}],
+ menu:()=>[['Tanda Tangan Realistis…',()=>openReal('ttd')],['Stempel Realistis…',()=>openReal('stmp')],'-',['Buat Stempel…',stampDlg],['Buat Tanda Tangan dari Teks…',sigDlg],'-',['Layer jadi Multiply (menyatu dgn kertas)',()=>{if(!A)return;A.m='multiply';push();render();ui()}]]});
+const hi3=M.findIndex(m=>m[0]=='Help');
+M.splice(hi3<0?M.length:hi3,0,['Plugin',()=>[...FSPlugin.list.map(pl=>[pl.name,null,'',undefined,undefined,pl.menu]),'-',['Tentang sistem plugin…',()=>msgBox('Sistem Plugin Fotoshop\n\nPlugin terpasang:\n'+FSPlugin.list.map(p=>'• '+p.name+' v'+p.version).join('\n')+'\n\nBuat plugin baru dengan:\nFSPlugin.register({id,name,version,\n  filters:[{id,name,params,fn(d,w,h,p)}],\n  menu:()=>[[label,fungsi],...]})')]]]);
+})();
+
 buildMenu();accord();goHome();
 </script>
 <script>
