@@ -3154,6 +3154,38 @@ const hi3=M.findIndex(m=>m[0]=='Help');
 M.splice(hi3<0?M.length:hi3,0,['Plugin',()=>[...FSPlugin.list.map(pl=>[pl.name,null,'',undefined,undefined,pl.menu]),'-',['Tentang sistem plugin…',()=>msgBox('Sistem Plugin Fotoshop\n\nPlugin terpasang:\n'+FSPlugin.list.map(p=>'• '+p.name+' v'+p.version).join('\n')+'\n\nBuat plugin baru dengan:\nFSPlugin.register({id,name,version,\n  filters:[{id,name,params,fn(d,w,h,p)}],\n  menu:()=>[[label,fungsi],...]})')]]]);
 })();
 
+/* ===================================================================
+   NOTIFIKASI PEMBARUAN APLIKASI
+   Aplikasi mengambil file version.json dari alamat yang Anda atur,
+   lalu menampilkan pemberitahuan jika versinya lebih baru dari APP_VERSION.
+   =================================================================== */
+(function(){
+const APP_VERSION='1.0.0';          /* NAIKKAN angka ini setiap kali Anda merilis index.html baru */
+const UPDATE_URL_DEFAULT='';        /* isi alamat version.json di sini agar langsung aktif (opsional) */
+const vc=(a,b)=>{const x=String(a).split('.').map(n=>parseInt(n)||0),y=String(b).split('.').map(n=>parseInt(n)||0);for(let i=0;i<Math.max(x.length,y.length);i++){const d=(x[i]||0)-(y[i]||0);if(d)return d>0?1:-1}return 0};
+const getUrl=()=>LS.get('sf_upd_url')||UPDATE_URL_DEFAULT;
+function setUrl(){askBox('Alamat version.json untuk cek pembaruan',getUrl()||'https://',v=>{v=(v||'').trim();if(!v||v=='https://'){LS.del('sf_upd_url');toast('Pengecekan pembaruan dimatikan');return}LS.set('sf_upd_url',v);toast('Alamat disimpan, memeriksa…');check(true)})}
+function banner(j){const old=document.getElementById('updBn');if(old)old.remove();
+ const b=document.createElement('div');b.id='updBn';
+ b.style.cssText='position:fixed;right:16px;bottom:16px;z-index:99999;max-width:340px;background:#2b2b2b;color:#eee;border:1px solid #3b8eea;border-radius:10px;padding:14px 16px;box-shadow:0 8px 28px #0009;font:13px/1.45 system-ui,sans-serif';
+ const esc=t=>String(t).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+ b.innerHTML=`<div style="font-weight:600;font-size:14px;margin-bottom:4px">Pembaruan tersedia: v${esc(j.version)}</div><div style="color:#aaa;margin-bottom:8px">Versi Anda: v${APP_VERSION}</div>${j.notes?`<div style="margin-bottom:10px;white-space:pre-line;max-height:120px;overflow:auto">${esc(Array.isArray(j.notes)?'• '+j.notes.join('\n• '):j.notes)}</div>`:''}<div style="display:flex;gap:8px;flex-wrap:wrap"><button data-a="go" style="background:#3b8eea;color:#fff;border:0;border-radius:6px;padding:6px 12px;cursor:pointer">${(window.electronAPI&&j.htmlUrl)?'Perbarui sekarang':j.url?'Unduh pembaruan':'Muat ulang'}</button><button data-a="later" style="background:#444;color:#eee;border:0;border-radius:6px;padding:6px 12px;cursor:pointer">Nanti</button><button data-a="skip" style="background:transparent;color:#999;border:0;padding:6px 4px;cursor:pointer">Lewati versi ini</button></div>`;
+ b.onclick=e=>{const a=e.target.dataset&&e.target.dataset.a;if(!a)return;
+  if(a=='go'){if(window.electronAPI&&typeof window.electronAPI.applyUpdate=='function'&&j.htmlUrl){if(!confirm('Aplikasi akan dimuat ulang untuk memasang v'+j.version+'.\nPastikan pekerjaan Anda sudah disimpan. Lanjut?'))return;toast('Mengunduh pembaruan…');window.electronAPI.applyUpdate(j).then(r=>{if(r&&!r.ok)toast('Gagal memperbarui: '+r.error)})}else if(j.url)window.open(j.url,'_blank');else location.reload()}
+  else if(a=='skip')LS.set('sf_upd_skip',j.version);
+  b.remove()};
+ document.body.append(b)}
+async function check(manual){const u=getUrl();if(!u){if(manual)setUrl();return}
+ try{const r=await fetch(u+(u.includes('?')?'&':'?')+'t='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error(r.status);const j=await r.json();if(window.electronAPI&&window.electronAPI.updateSplash&&j.splash)window.electronAPI.updateSplash(j.splash).then(x=>{if(x&&x.updated)toast('Tampilan splash diperbarui – terlihat saat aplikasi dibuka berikutnya')}).catch(()=>{});
+  if(vc(j.version,APP_VERSION)>0){if(!manual&&LS.get('sf_upd_skip')===String(j.version))return;banner(j)}
+  else if(manual)toast('Sudah versi terbaru (v'+APP_VERSION+')')}
+ catch(e){if(manual)toast('Gagal memeriksa pembaruan – cek alamat atau koneksi internet')}}
+window.FSUpdate={check,version:APP_VERSION,setUrl};
+const hi4=M.findIndex(m=>m[0]=='Help');
+if(hi4>=0){const o=M[hi4][1];M[hi4]=['Help',()=>[['Periksa pembaruan…',()=>check(true),'',0],['Alamat pembaruan…',setUrl,'',0],['Versi aplikasi: v'+APP_VERSION,null,'',0,'x'],'-',...o()]]}
+setTimeout(()=>check(false),4000);setInterval(()=>check(false),6*3600*1000);
+})();
+
 buildMenu();accord();goHome();
 </script>
 <script>
@@ -4105,17 +4137,48 @@ function psdDesc(u8,p){
   case 'doub':{const v=dv.getFloat64(p);p+=8;return v}
   case 'UntF':{p+=4;const v=dv.getFloat64(p);p+=8;return v}
   case 'TEXT':return uni();
-  case 'enum':key();key();return null;
+  case 'enum':key();return key();
   case 'long':{const v=dv.getInt32(p);p+=4;return v}
   case 'bool':return u8[p++];
   case 'comp':p+=8;return null;
-  case 'tdta':case 'alis':{const n=dv.getUint32(p);p+=4+n;return null}
+  case 'tdta':{const n=dv.getUint32(p);p+=4;const r=u8.slice(p,p+n);p+=n;return r}
+  case 'alis':{const n=dv.getUint32(p);p+=4+n;return null}
   case 'type':case 'GlbC':case 'Clss':uni();key();return null;
   default:throw new Error('descriptor '+t)}};
  const obj=()=>{uni();key();const n=dv.getUint32(p);p+=4;const o={};for(let i=0;i<n;i++){const k=key();o[k]=val(k4())}return o};
  p+=4; /* versi */
  return obj();
 }
+
+/* ===== Teks PSD (TySh + EngineData) → agar layer teks bisa diedit lagi ===== */
+function psdEngine(u8){
+ let s='';for(let k=0;k<u8.length;k++)s+=String.fromCharCode(u8[k]);let i=0;
+ const ws=()=>{while(i<s.length&&' \t\r\n'.indexOf(s[i])>=0)i++};
+ const tok=()=>{const m=/^[^\s\/\[\]<>()]+/.exec(s.substr(i,80));if(!m){i++;return ''}i+=m[0].length;return m[0]};
+ function str(){const o=[];i++;let d=1;while(i<s.length){const c=s[i];if(c=='\\'){o.push(s.charCodeAt(i+1));i+=2;continue}if(c=='(')d++;else if(c==')'){d--;if(!d){i++;break}}o.push(s.charCodeAt(i));i++}
+  if(o[0]==0xFE&&o[1]==0xFF){let r='';for(let k=2;k+1<o.length;k+=2)r+=String.fromCharCode(o[k]<<8|o[k+1]);return r}
+  return String.fromCharCode.apply(null,o)}
+ function val(){ws();const c=s[i];
+  if(c=='<'&&s[i+1]=='<'){i+=2;return dict()}
+  if(c=='['){i++;const a=[];for(;;){ws();if(i>=s.length)break;if(s[i]==']'){i++;break}a.push(val())}return a}
+  if(c=='(')return str();
+  if(c=='/'){i++;return tok()}
+  const t=tok();if(t=='true')return true;if(t=='false')return false;const n=parseFloat(t);return isNaN(n)?t:n}
+ function dict(){const o={};for(;;){ws();if(i>=s.length)return o;if(s[i]=='>'&&s[i+1]=='>'){i+=2;return o}if(s[i]!='/'){i++;continue}i++;const k=tok();o[k]=val()}}
+ const st=s.indexOf('<<');if(st<0)return null;i=st+2;return dict()}
+function psdParseTySh(u8,ds){
+ const dv=new DataView(u8.buffer,u8.byteOffset,u8.byteLength),tr=[];for(let k=0;k<6;k++)tr.push(dv.getFloat64(ds+2+k*8));
+ const d=psdDesc(u8,ds+2+48+2);if(!d||typeof d['Txt ']!=='string')return null;
+ let eng=null;try{if(d.EngineData&&d.EngineData.length)eng=psdEngine(d.EngineData)}catch(_){}
+ const ed=eng&&eng.EngineDict||{},rd=eng&&eng.ResourceDict||{};
+ const run=(((ed.StyleRun||{}).RunArray||[])[0]||{}).StyleSheet||{},sd=run.StyleSheetData||{};
+ const fonts=rd.FontSet||[],fidx=typeof sd.Font=='number'?sd.Font:0,fname=(fonts[fidx]||fonts[0]||{}).Name||'Arial';
+ const fc=(sd.FillColor||{}).Values||[1,0,0,0],hex=v=>Math.max(0,Math.min(255,Math.round((v||0)*255))).toString(16).padStart(2,'0');
+ const color='#'+hex(fc[1])+hex(fc[2])+hex(fc[3]);
+ const par=((((ed.ParagraphRun||{}).RunArray||[])[0]||{}).ParagraphSheet||{}).Properties||{};
+ const j=par.Justification|0,yy=Math.abs(tr[3])||1;
+ return{text:d['Txt '].replace(/[\r\u0003]/g,'\n').replace(/\n+$/,''),font:String(fname),size:(typeof sd.FontSize=='number'?sd.FontSize:24)*yy,color,
+  align:j==1||j==4?'right':j==2||j==5?'center':'left',vertical:d.Ornt==='Vrtc',fb:!!sd.FauxBold,fi:!!sd.FauxItalic}}
 async function psdRead(buf){
  const u8=new Uint8Array(buf),dv=new DataView(buf);let p=0;
  const u16=()=>{const v=dv.getUint16(p);p+=2;return v},i16=()=>{const v=dv.getInt16(p);p+=2;return v},u32=()=>{const v=dv.getUint32(p);p+=4;return v},i32=()=>{const v=dv.getInt32(p);p+=4;return v};
@@ -4140,13 +4203,14 @@ async function psdRead(buf){
      if(mLen>=36){const e=mS+mLen;rm={fg:u8[e-18],def:u8[e-17],top:dv.getInt32(e-16),left:dv.getInt32(e-12),bot:dv.getInt32(e-8),right:dv.getInt32(e-4)}}}
     p=mS+mLen;{const a=u32();p+=a}
     const nl=u8[p],pname=new TextDecoder('latin1').decode(u8.subarray(p+1,p+1+nl));p+=(1+nl+3)&~3;
-    let name=pname,sect=0,fill=100,art=null;
+    let name=pname,sect=0,fill=100,art=null,tys=null;
     while(p+12<=exEnd){
      const sg=tag(p);if(sg!='8BIM'&&sg!='8B64'){p++;continue}
      const key=tag(p+4),len=dv.getUint32(p+8),ds=p+12;
      if(key=='luni'){const L2=dv.getUint32(ds);let s='';for(let i=0;i<L2&&ds+4+i*2+1<u8.length;i++)s+=String.fromCharCode(dv.getUint16(ds+4+i*2));name=s.replace(/\0+$/,'')||pname}
      else if(key=='lsct'||key=='lsdk'){sect=dv.getUint32(ds)}
      else if(key=='iOpa'){fill=Math.round(u8[ds]/255*100)}
+     else if(key=='TySh'){try{tys=psdParseTySh(u8,ds)}catch(_){}}
      else if(key=='artb'||key=='artd'||key=='abdd'){
       try{const d=psdDesc(u8,ds),r=d.artboardRect;
        if(r){let bg=[255,255,255];const c=d['Clr '];if(c&&c['Rd  ']!==undefined)bg=[c['Rd  '],c['Grn '],c['Bl  ']].map(v=>Math.max(0,Math.min(255,Math.round(v))));
@@ -4156,7 +4220,7 @@ async function psdRead(buf){
      p=ds+len;
     }
     p=exEnd;
-    recs.push({top,left,bot,right,chs,bk,op,clip,fill,hidden:!!(fl&2),name,sect,um,rm,art});
+    recs.push({top,left,bot,right,chs,bk,op,clip,fill,hidden:!!(fl&2),name,sect,um,rm,art,text:tys});
    }
    /* ukuran kanvas: jika ada artboard, kanvas = gabungan semua artboard (seperti Photoshop) */
    const arts=recs.filter(r=>r.art&&(r.sect==1||r.sect==2)).map(r=>r.art);
@@ -4190,7 +4254,7 @@ async function psdRead(buf){
     if(w<=0||h<=0||need.some(i=>!P[i])){if(!r.clip)base=null;continue}
     const rgba=psdRGBA(need.map(i=>P[i]),P[-1],mode,w,h);
     const cx=r.left-bx0,cy=r.top-by0;
-    const lay={name:r.name||'Layer',x:cx,y:cy,w,h,o:Math.round(r.op/255*100),fill:r.fill,m:PSD_BM[r.bk]||'source-over',v:r.hidden?0:1,rgba,mask:ma};
+    const lay={name:r.name||'Layer',x:cx,y:cy,w,h,o:Math.round(r.op/255*100),fill:r.fill,m:PSD_BM[r.bk]||'source-over',v:r.hidden?0:1,rgba,mask:ma,text:r.text};
     if(r.clip){
      if(!base)lay.v=0;
      else{
@@ -4238,14 +4302,30 @@ async function psdRead(buf){
   for(let i=0;i<W*H;i++){const o=i*4;im.data[o]=im.data[o+1]=im.data[o+2]=ma[i];im.data[o+3]=255}
   t.getContext('2d').putImageData(im,0,0);
   const c=document.createElement('canvas');c.width=dw;c.height=dh;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,dw,dh);g.drawImage(t,ox,oy);return c};
+
+ /* jadikan layer PSD sebagai layer teks yang bisa diedit (piksel asli tetap dipakai sampai teks diubah) */
+ function psdFontMap(raw){
+  let n=String(raw||'Arial'),st='Regular';const b=/bold|black|heavy/i.test(n),it=/italic|oblique/i.test(n);
+  if(b&&it)st='Bold Italic';else if(b)st='Bold';else if(it)st='Italic';
+  let fam=n.split('-')[0].replace(/(PSMT|PS|MT)$/,'').replace(/([a-z])([A-Z])/g,'$1 $2').trim()||'Arial';
+  const hit=FONTS.find(f=>f.toLowerCase()==fam.toLowerCase());
+  if(hit)fam=hit;else{const o=document.createElement('option');o.textContent=fam;fam_el().append(o);FONTS.push(fam)}
+  return{fam,st}}
+ const fam_el=()=>document.getElementById('fam');
+ function attachText(l,e){
+  try{const t=e.text,fm=psdFontMap(t.font);let st=fm.st;if(t.fb&&!/Bold/.test(st))st=st=='Italic'?'Bold Italic':'Bold';if(t.fi&&!/Italic/.test(st))st=st=='Bold'?'Bold Italic':'Italic';
+   const cw=l.c.width,ch=l.c.height,nm=t.text.split('\n')[0].slice(0,18);
+   if(!e.name||e.name===t.text.split('\n')[0]||e.name.length<=1)l.name=nm;
+   l.tx={s:t.text,x:0,y:0,fs:Math.max(6,Math.round(t.size)),f:fm.fam,c:t.color,o:1,st,al:t.align,or:t.vertical?'v':'h',wp:0,tw:cw,bb:{x:0,y:0,w:cw,h:ch},dw:D.w,dh:D.h,auto:nm};
+   return 1}catch(_){return 0}}
  /* bangun layer di dokumen aktif (D harus sudah diset); ox/oy = geser seluruh isi PSD */
  function build(r,ox,oy){
-  const map=new Map(),abs=[];let n=0;build.abs=abs;
+  const map=new Map(),abs=[];let n=0;build.abs=abs;build.txt=0;
   for(const e of r.layers){
    let l;
    if(e.group){l=addLayer(e.name,mk(1,1),0,0);l.isGroup=1;l.open=false;l.v=e.v;l.o=100}   /* semua group/artboard tertutup */
    else{l=addLayer(e.name,cvs(e.w,e.h,e.rgba),e.x+ox,e.y+oy);l.o=e.o;l.m=e.m;l.v=e.v;if(e.fill!==100)l.fill=e.fill;
-    if(e.mask)l.mask=maskCv(e.mask,r.w,r.h,D.w,D.h,ox,oy);n++}
+    if(e.mask)l.mask=maskCv(e.mask,r.w,r.h,D.w,D.h,ox,oy);if(e.text&&attachText(l,e))build.txt=(build.txt||0)+1;n++}
    if(e.group&&e.art)abs.push({id:l.id,x0:e.art.x0+ox,y0:e.art.y0+oy,x1:e.art.x1+ox,y1:e.art.y1+oy});
    map.set(e,l)}
   for(const e of r.layers)if(e.parent&&map.get(e.parent))map.get(e).inGroup=map.get(e.parent).id;
@@ -4259,13 +4339,14 @@ async function psdRead(buf){
   let r;try{r=await psdRead(await file.arrayBuffer())}catch(e){alert('Tidak bisa membuka PSD: '+((e&&e.message)||e));return}
   const nab=r.layers.filter(l=>l.group&&l.art).length;
   const note=(nab>1?' · '+nab+' artboard berdampingan':'')+(r.unsupported?' (ada efek/adjustment yang belum didukung; lihat layer "PSD Komposit (referensi)")':'');
+  const tnote=()=>build.txt?' · '+build.txt+' layer teks bisa diedit (tool Teks, klik teksnya)':'';
   if(!asNew&&L.length&&!document.body.classList.contains('home')){
    const ox=Math.round((D.w-r.w)/2),oy=Math.round((D.h-r.h)/2),n=build(r,ox,oy);
-   cur.abs=(cur.abs||[]).concat(build.abs);push();sync();toast('PSD ditambahkan: '+n+' layer'+note);return}
+   cur.abs=(cur.abs||[]).concat(build.abs);push();sync();toast('PSD ditambahkan: '+n+' layer'+note+tnote());return}
   newDoc(file.name,r.w,r.h,null);L=[];A=null;
   const n=build(r,0,0);cur.abs=build.abs;
   H=[];R=[];push();sync();cur.type='PSD';cur.savedSnap=H[H.length-1];saveDoc();try{addRecent(cur)}catch(_){}
-  toast('PSD dibuka: '+n+' layer'+note);
+  toast('PSD dibuka: '+n+' layer'+note+tnote());
  }
  const _li2=window.loadImg;
  window.loadImg=function(f,asNew){if(isPsd(f))return psdOpen(f,asNew);return _li2.apply(this,arguments)};
