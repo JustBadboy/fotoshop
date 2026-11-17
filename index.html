@@ -722,6 +722,20 @@ function ungroupOne(l){
  const h=l.inGroup&&grpHead(l.inGroup);delete l.inGroup;
  L=L.filter(x=>x!==l);const hi=h?L.indexOf(h):L.length-1;L.splice(hi+1,0,l);
  A=l;push();sync()}
+/* ===== Duplikat layer / grup (Ctrl+J) ===== */
+function cloneLayer(l,name){const n={...l,id:++uid,name,c:cl(l.c),f:{...l.f}};if(l.mask&&l.mask.getContext)n.mask=cl(l.mask);if(l.fx){try{n.fx=JSON.parse(JSON.stringify(l.fx))}catch(_){}}return n}
+/* salin satu grup beserta seluruh isinya (termasuk sub-grup); hasil: [anggota..., kepala grup] sesuai urutan L */
+function dupTree(h,pid){const nh={...h,id:++uid,name:h.name+' salinan',c:mk(1,1),f:{...h.f}};if(pid)nh.inGroup=pid;const out=[];grpMembers(h).forEach(m=>{if(m.isGroup)out.push(...dupTree(m,nh.id));else{const n=cloneLayer(m,m.name);n.inGroup=nh.id;out.push(n)}});out.push(nh);return out}
+function dupLayers(){if(!cur||!A)return;
+ let tg=SELL.size>1?[...SELL].filter(l=>L.includes(l)):[A];if(!tg.length)tg=[A];
+ const gid=new Set(tg.filter(l=>l.isGroup).map(l=>l.id));tg=tg.filter(l=>!(l.inGroup&&gid.has(l.inGroup)));
+ tg.sort((a,b)=>L.indexOf(b)-L.indexOf(a));
+ const news=[];let na=null;
+ tg.forEach(t=>{const nw=t.isGroup?dupTree(t):[cloneLayer(t,t.name+' salinan')];L.splice(L.indexOf(t)+1,0,...nw);const top=nw[nw.length-1];news.push(top);if(t===A)na=top});
+ A=na||news[0];SELL.clear();if(news.length>1)news.forEach(n=>SELL.add(n));
+ push();sync();toast(news.length>1?news.length+' item diduplikat':(A.isGroup?'Grup diduplikat':'Layer diduplikat'))}
+/* Ctrl+J: ada seleksi -> layer baru dari isi seleksi; tanpa seleksi -> duplikat layer / grup */
+function layerJ(){if(!cur||!A)return;if(SEL&&!A.isGroup)selOp.copy();else dupLayers()}
 function layerBar(){if(document.getElementById('lbar'))return;const FD='<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>';const ic={
   link:'<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>',
   fx:'<text x="4" y="17" font-size="13" font-style="italic" fill="currentColor" stroke="none">fx</text>',
@@ -809,7 +823,7 @@ const rs=(c,w,h)=>{const n=mk(Math.max(1,w|0),Math.max(1,h|0)),g=n.getContext('2
 const md=e=>{const m=$('#smode').value;if((T=='qsel'||T=='osel')&&(e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey)return m=='sub'?'add':'sub';if(T!='qsel'&&T!='osel'&&e.shiftKey&&e.altKey)return'int';return e.shiftKey?'add':e.altKey?'sub':m};
 const selPath=(g,a,b,mod)=>{let w=b.x-a.x,h=b.y-a.y,x0=a.x,y0=a.y;if(mod&&mod.sh){const q=Math.max(Math.abs(w),Math.abs(h));w=(w<0?-q:q);h=(h<0?-q:q)}if(mod&&mod.al){x0=a.x-w;y0=a.y-h;w*=2;h*=2}T=='esel'?g.ellipse(x0+w/2,y0+h/2,Math.abs(w/2),Math.abs(h/2),0,0,7):g.rect(x0,y0,w,h)};
 function ovr(){ox.clearRect(0,0,D.w,D.h);ovrX();if(SEL&&!QM){const t=Math.max(1,Math.round(1.2/V.s));if(!SEL.e||SEL.t!=t){SEL.e=edge(SEL.m,t);SEL.t=t}ants()}
- if(T=='xf'&&A){const w=A.c.width,h=A.c.height,r=8/V.s;ox.save();ox.lineWidth=1.5/V.s;ox.strokeStyle='#4c8dff';ox.fillStyle='#fff';ox.strokeRect(A.x,A.y,w,h);[[A.x,A.y],[A.x+w,A.y],[A.x+w,A.y+h],[A.x,A.y+h]].forEach(([x,y])=>{ox.fillRect(x-r/2,y-r/2,r,r);ox.strokeRect(x-r/2,y-r/2,r,r)});ox.restore()}}
+ if(T=='xf'&&A&&!A.isGroup){const S=xfSess(),cx=A.x+A.c.width/2,cy=A.y+A.c.height/2,w=S.w,h=S.h,r=8/V.s;ox.save();ox.translate(cx,cy);ox.rotate(S.a);ox.lineWidth=1.5/V.s;ox.strokeStyle='#4c8dff';ox.fillStyle='#fff';ox.strokeRect(-w/2,-h/2,w,h);[[-1,-1],[1,-1],[1,1],[-1,1]].forEach(([a,b])=>{const x=a*w/2,y=b*h/2;ox.fillRect(x-r/2,y-r/2,r,r);ox.strokeRect(x-r/2,y-r/2,r,r)});ox.restore()}}
 function featherM(m,f){f=+f||0;if(f<=0.4)return m;const w=m.width,h=m.height,a=mAlpha(m),o=gaussF(Float32Array.from(a),w,h,f/2,1),c=mk(w,h),g=c.getContext('2d'),im=g.createImageData(w,h),d=im.data;for(let i=0;i<a.length;i++){const v=Math.max(0,Math.min(255,o[i]));if(v>0){d[i*4]=76;d[i*4+1]=141;d[i*4+2]=255;d[i*4+3]=v}}g.putImageData(im,0,0);return c}
 function comb(m,mode){if(!SEL||mode=='new'){SEL={m}}else{const g=SEL.m.getContext('2d');g.globalCompositeOperation=mode=='add'?'source-over':mode=='int'?'destination-in':'destination-out';g.drawImage(m,0,0);g.globalCompositeOperation='source-over';SEL.e=null}ovr()}
 const mkm=fn=>{const m=mk(D.w,D.h),g=m.getContext('2d');g.fillStyle='#4c8dff';fn(g);return m};
@@ -883,6 +897,15 @@ function shfDraw(p,e,fn){if(!e.shiftKey){drag.snap=null;drag.an=null;return fals
 addEventListener('keydown',e=>{if(e.key=='Shift'&&!SHF){SHF=true;shfRedraw()}},true);
 addEventListener('keyup',e=>{if(e.key=='Shift'){SHF=false;shfRedraw()}},true);
 addEventListener('blur',()=>{SHF=false});
+/* ---- Free Transform (Ctrl+T): skala + rotasi. Sesi menyimpan bitmap asli supaya seret berulang tidak menurunkan kualitas ---- */
+let XFS=null,_rh=0;
+const xfLocal=(p,c,a)=>{const co=Math.cos(a),si=Math.sin(a),dx=p.x-c.x,dy=p.y-c.y;return{x:dx*co+dy*si,y:-dx*si+dy*co}};
+function xfSess(){const t=H[H.length-1];if(XFS&&XFS.l===A&&XFS.baked===A.c&&XFS.hs===t)return XFS;return XFS={l:A,o:A.c,baked:A.c,w:A.c.width,h:A.c.height,a:0,hs:t,cx:0,cy:0}}
+function xfBake(S){const co=Math.abs(Math.cos(S.a)),si=Math.abs(Math.sin(S.a)),bw=Math.max(1,Math.ceil(S.w*co+S.h*si-1e-6)),bh=Math.max(1,Math.ceil(S.w*si+S.h*co-1e-6));if(bw>8000||bh>8000)return false;const n=mk(bw,bh),g=n.getContext('2d');g.imageSmoothingQuality='high';g.translate(bw/2,bh/2);g.rotate(S.a);g.drawImage(S.o,-S.w/2,-S.h/2,S.w,S.h);S.l.c=n;S.baked=n;S.l.x=Math.round(S.cx-bw/2);S.l.y=Math.round(S.cy-bh/2);return true}
+function xfRotHit(p){if(!A||A.isGroup||A.lock)return false;const S=xfSess(),q=xfLocal(p,{x:A.x+A.c.width/2,y:A.y+A.c.height/2},S.a),hw=S.w/2,hh=S.h/2,r=14/V.s;if(Math.abs(q.x)<=hw&&Math.abs(q.y)<=hh)return false;return![[-1,-1],[1,-1],[1,1],[-1,1]].some(k=>Math.abs(k[0]*hw-q.x)<r&&Math.abs(k[1]*hh-q.y)<r)}
+const rotCur=()=>CUR("<path d='M20 12a8 8 0 1 1-2.5-5.8M20 4v4.5h-4.5'/>",12,12,'crosshair');
+const setRotCur=()=>{_rh=1;st.style.cursor=rotCur()};
+st.addEventListener('pointermove',e=>{if(drag||!cur||(T!='crop'&&T!='xf')){if(_rh&&!drag){_rh=0;applyCursor(T)}return}const p=pt(e),z=T=='crop'?cropRotHit(p):xfRotHit(p);if(z)setRotCur();else if(_rh){_rh=0;applyCursor(T)}});
 function shfRedraw(){if(drag&&drag.e&&(T=='rect'||T=='ellipse'||T=='line')){ovr();shape(ox,drag.s,drag.e,0,0)}}
 st.onpointerdown=e=>{st.setPointerCapture(e.pointerId);
  if(CRS&&e.button==0&&!sp){crsPick(pt(e));return}
@@ -891,7 +914,8 @@ st.onpointerdown=e=>{st.setPointerCapture(e.pointerId);
  if(SEL&&(T=='brush'||T=='eraser'||T=='bucket'))bk=cl(A.c);
  if((T=='sel'||T=='esel'||T=='lasso')&&SEL&&drag.md=='new'){const px=p.x|0,py=p.y|0;if(px>=0&&py>=0&&px<D.w&&py<D.h&&SEL.m.getContext('2d').getImageData(px,py,1,1).data[3]>127){drag.inside=1;drag.msel=cl(SEL.m);drag.moved=0;return}}
  if(NT.has(T)){newDown(p,e)}else if(T=='move'&&SEL){addLayer('Dipindah',lift(1));SEL=null;ovr();drag.l={x:A.x,y:A.y}}
- else if(T=='xf'){const w=A.c.width,h=A.c.height,r=14/V.s,cs=[[A.x,A.y],[A.x+w,A.y],[A.x+w,A.y+h],[A.x,A.y+h]],i=cs.findIndex(c=>Math.abs(c[0]-p.x)<r&&Math.abs(c[1]-p.y)<r);if(i>=0)drag.xf={i,o:A.c,x:A.x,y:A.y,w,h};else drag.mv=1}
+ else if(T=='xf'){if(A.isGroup){drag=null;toast('Free Transform: pilih layer di dalam grup, bukan foldernya');return}const S=xfSess(),c={x:A.x+A.c.width/2,y:A.y+A.c.height/2},q=xfLocal(p,c,S.a),r=14/V.s,hw=S.w/2,hh=S.h/2,i=[[-1,-1],[1,-1],[1,1],[-1,1]].findIndex(k=>Math.abs(k[0]*hw-q.x)<r&&Math.abs(k[1]*hh-q.y)<r);
+  if(i>=0)drag.xf={i,w:S.w,h:S.h,c,a:S.a};else if(Math.abs(q.x)<=hw&&Math.abs(q.y)<=hh)drag.mv=1;else drag.xr={c,a0:Math.atan2(p.y-c.y,p.x-c.x),r0:S.a}}
  else if(T=='qsel'){render();drag.im=cx.getImageData(0,0,D.w,D.h);if(drag.md=='new'||!SEL)SEL={m:mkm(()=>{})};qstep(p);ovr()}
  else if(T=='heal'){drag.pts=(e.shiftKey&&lspOK())?[{x:LSP.x,y:LSP.y},p]:[p]}
  else if(T=='wand'){const m=wand(p.x,p.y,+tol.value);if(m)comb(featherM(m,$('#sfea').value),md(e));drag=null}
@@ -906,11 +930,12 @@ st.onpointermove=e=>{if(!drag)return;
  if(T=='qsel'){const a=drag.last,n=Math.max(1,Math.ceil(Math.hypot(p.x-a.x,p.y-a.y)/Math.max(2,sz.value/4)));for(let i=1;i<=n;i++)qstep({x:a.x+(p.x-a.x)*i/n,y:a.y+(p.y-a.y)*i/n});drag.last=p;ovr()}
  else if(T=='heal'){const hq=lockP(p,e);if(hq.x==drag.last.x&&hq.y==drag.last.y)return;drag.last=hq;drag.pts.push(hq);ovr();ox.save();ox.strokeStyle='rgba(255,0,80,.45)';ox.lineWidth=+sz.value;ox.lineCap=ox.lineJoin='round';ox.beginPath();drag.pts.forEach((q,i)=>i?ox.lineTo(q.x,q.y):ox.moveTo(q.x,q.y));ox.lineTo(hq.x+.01,hq.y);ox.stroke();ox.restore()}
  else if(T=='brush'||T=='eraser'){const bq=lockP(p,e);if(bq.x!=drag.last.x||bq.y!=drag.last.y){stroke(drag.last,bq);drag.last=bq}}
- else if(drag.xf){const f=drag.xf,ax=f.i==0||f.i==3?f.x+f.w:f.x,ay=f.i<2?f.y+f.h:f.y;let w=Math.abs(p.x-ax),h=Math.abs(p.y-ay);if(!e.shiftKey){const s=Math.max(w/f.w,h/f.h);w=f.w*s;h=f.h*s}w=Math.max(4,w);h=Math.max(4,h);A.c=rs(f.o,w,h);A.x=Math.round(f.i==0||f.i==3?ax-w:ax);A.y=Math.round(f.i<2?ay-h:ay);render();ovr()}
+ else if(drag.xr){const f=drag.xr,S=XFS;drag.did=1;let a=f.r0+Math.atan2(p.y-f.c.y,p.x-f.c.x)-f.a0;if(e.shiftKey){const k=Math.PI/12;a=Math.round(a/k)*k}S.a=a;S.cx=f.c.x;S.cy=f.c.y;setRotCur();if(xfBake(S)){render();ovr()}}
+ else if(drag.xf){const f=drag.xf,S=XFS;drag.did=1;const co=Math.cos(f.a),si=Math.sin(f.a),q=xfLocal(p,f.c,f.a),sx=f.i==0||f.i==3?-1:1,sy=f.i<2?-1:1,ax=-sx*f.w/2,ay=-sy*f.h/2;let w=Math.abs(q.x-ax),h=Math.abs(q.y-ay);if(!e.shiftKey){const k=Math.max(w/f.w,h/f.h);w=f.w*k;h=f.h*k}w=Math.max(4,Math.round(w));h=Math.max(4,Math.round(h));const lx=ax+sx*w/2,ly=ay+sy*h/2;S.w=w;S.h=h;S.cx=f.c.x+lx*co-ly*si;S.cy=f.c.y+lx*si+ly*co;if(xfBake(S)){render();ovr()}}
  else if(T=='move'||drag.mv){if(!drag.ls)drag.ls=[...new Set([...SELL,...(A.isGroup?L.filter(x=>x.inGroup===A.id):[])])].filter(l=>l!==A&&!l.lock).map(l=>[l,l.x,l.y]);const mq=e.shiftKey?snap45(drag.s,p):p;A.x=Math.round(drag.l.x+mq.x-drag.s.x);A.y=Math.round(drag.l.y+mq.y-drag.s.y);drag.ls.forEach(([l,x,y])=>{l.x=x+Math.round(mq.x-drag.s.x);l.y=y+Math.round(mq.y-drag.s.y)});render();ovr()}
  else{ovr();drag.e=p;if(T=='lasso'){drag.pts=drag.pts||[drag.s];const lq=lockP(p,e);drag.last=lq;drag.pts.push(lq);ox.save();ox.shadowColor='#000';ox.shadowBlur=2;ox.lineWidth=Math.max(1,1/V.s);ox.setLineDash([5,4]);ox.strokeStyle='#fff';ox.beginPath();drag.pts.forEach((q,i)=>i?ox.lineTo(q.x,q.y):ox.moveTo(q.x,q.y));ox.stroke();ox.restore()}else if(T=='sel'||T=='esel'){ox.save();ox.shadowColor='#000';ox.shadowBlur=2;ox.lineWidth=Math.max(1,1/V.s);ox.setLineDash([5,4]);ox.strokeStyle='#fff';ox.beginPath();selPath(ox,drag.s,p,drag.mod={sh:e.shiftKey,al:e.altKey});ox.stroke();ox.restore()}else if(T=='crop'){ox.save();ox.fillStyle='#0008';ox.fillRect(0,0,D.w,D.h);ox.clearRect(drag.s.x,drag.s.y,p.x-drag.s.x,p.y-drag.s.y);ox.setLineDash([6,4]);ox.strokeStyle='#fff';ox.strokeRect(drag.s.x,drag.s.y,p.x-drag.s.x,p.y-drag.s.y);ox.restore()}else shape(ox,drag.s,p,0,0)}};
 st.onpointerup=e=>{if(!drag)return;const d=drag;drag=null;if(d.pan)return;if((T=='brush'||T=='eraser'||T=='heal'||(T=='clone'&&d.cl))&&d.last)LSP={x:d.last.x,y:d.last.y,l:A,d:cur};if(NT.has(T)){newUp(d,pt(e),e);return}const p=d.e||pt(e);bk=null;ovr();
- if(d.xf||d.mv){push();ovr();return}
+ if(d.xf||d.xr||d.mv){if((d.xf||d.xr)&&!d.did){ovr();return}push();if(XFS)XFS.hs=H[H.length-1];ovr();return}
  if(T=='qsel'){qFinish();return}
  if(T=='heal'){if(d.pts){heal(A,d.pts,+sz.value/2);push();render()}return}
  if(T=='sel'||T=='esel'){if(d.msel){SEL.e=null;ovr();return}if(d.e&&Math.abs(p.x-d.s.x)>1){d.mod={sh:e.shiftKey,al:e.altKey};comb(featherM(mkm(g=>{g.beginPath();selPath(g,d.s,p,d.mod);g.fill()}),$('#sfea').value),d.md)}else if(!d.inside)selOp.none();return}
@@ -943,14 +968,14 @@ $('#bRot').onclick=()=>{const w=D.w,h=D.h;L.forEach(l=>{const cw=l.c.width,ch=l.
 $('#bBake').onclick=()=>{const n=mk(A.c.width,A.c.height),g=n.getContext('2d');g.filter=fs(A.f);g.drawImage(A.c,0,0);A.c=n;A.f=F0();push();sync()};
 $('#bReset').onclick=()=>{A.f=F0();push();sync()};
 $('#lAdd').onclick=()=>{addLayer('Layer '+(uid+1));push();sync()};
-$('#lDup').onclick=()=>{const l={...A,id:++uid,name:A.name+' salinan',c:cl(A.c),f:{...A.f}};L.splice(L.indexOf(A)+1,0,l);A=l;push();sync()};
+$('#lDup').onclick=()=>dupLayers();
 $('#lDel').onclick=()=>{if(!A)return;const del=A.isGroup?L.filter(x=>x===A||x.inGroup===A.id):[A];if(L.length-del.length<1)return;const i=L.indexOf(A);L=L.filter(x=>!del.includes(x));A=L[Math.max(0,Math.min(i-1,L.length-1))];SELL.clear();push();sync()};
 $('#lUp').onclick=()=>{const i=L.indexOf(A);if(i<L.length-1){[L[i],L[i+1]]=[L[i+1],L[i]];push();sync()}};
 $('#lDn').onclick=()=>{const i=L.indexOf(A);if(i>0){[L[i],L[i-1]]=[L[i-1],L[i]];push();sync()}};
 $('#lFlat').onclick=()=>{render();const c=cl(cv);L=[];addLayer('Gabungan',c);push();sync()};
 addEventListener('keydown',e=>{if(document.body.classList.contains('home'))return;if(/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)&&e.target.type!='range')return;
  const k=e.key.toLowerCase();
- if(e.ctrlKey||e.metaKey){if(k=='['||k==']'){e.preventDefault();sz.value=k=='['?Math.max(1,+sz.value-4):+sz.value+4;sz.dispatchEvent(new Event('input'));return}if(k=='z'){e.preventDefault();e.shiftKey?redo():undo()}else if(k=='y'){e.preventDefault();redo()}else if(k=='d'){e.preventDefault();selOp.none()}else if(k=='a'){e.preventDefault();selOp.all()}else if(k=='j'){e.preventDefault();selOp.copy()}else if(k=='g'){e.preventDefault();e.shiftKey?ungroup():createGroup()}else if(k=='e'&&!e.shiftKey&&!e.altKey){e.preventDefault();mergeLayers()}return}
+ if(e.ctrlKey||e.metaKey){if(k=='['||k==']'){e.preventDefault();sz.value=k=='['?Math.max(1,+sz.value-4):+sz.value+4;sz.dispatchEvent(new Event('input'));return}if(k=='z'){e.preventDefault();e.shiftKey?redo():undo()}else if(k=='y'){e.preventDefault();redo()}else if(k=='d'){e.preventDefault();selOp.none()}else if(k=='a'){e.preventDefault();selOp.all()}else if(k=='j'){e.preventDefault();layerJ()}else if(k=='g'){e.preventDefault();e.shiftKey?ungroup():createGroup()}else if(k=='e'&&!e.shiftKey&&!e.altKey){e.preventDefault();mergeLayers()}return}
  if(k==' '){sp=true;e.preventDefault();return}
  if(k=='delete'){selOp.del();return}
  if(k=='w'){const q=['osel','qsel','wand'],i=q.indexOf(T);setT(i<0?(GR[2].cur||'osel'):q[(i+1)%3]);return}
@@ -1059,7 +1084,7 @@ const SV=(t,ty,b)=>()=>{cur.type=ty;addRecent(cur);$(b).click()};
 const M=[['File',()=>[['Baru…',openNew,'',0],['Buka…',act('#bOpen'),'',0],['Tempatkan gambar…',act('#bAdd')],'-',['Simpan sebagai PNG',SV(0,'PNG','#bPng')],['Simpan sebagai JPG',SV(0,'JPEG','#bJpg')],'-',['Tutup',()=>closeDoc(docs.indexOf(cur))],['Tutup semua',()=>{while(docs.length){const n=docs.length;closeDoc(0);if(docs.length==n)break}}],'-',['Beranda (Home)',goHome,'',0]]],
 ['Edit',()=>[['Undo',undo,'Ctrl+Z'],['Redo',redo,'Ctrl+Y'],'-',['Isi seleksi dengan warna',selOp.fill],['Hapus isi seleksi',selOp.del,'Del'],'-',['Transformasi bebas',tool('xf'),'X']]],
 ['Image',()=>[['Ukuran gambar…',ask('Skala seluruh gambar (%)','50','#sc','#xD')],'-',['Putar 90°',act('#bRot')],['Balik horizontal',act('#bFH')],['Balik vertikal',act('#bFV')],'-',['Crop',tool('crop'),'C']]],
-['Layer',()=>[['Layer baru',act('#lAdd')],['Duplikat layer',act('#lDup')],['Hapus layer',act('#lDel')],['Grup layer (folder)',createGroup,'Ctrl+G'],['Ungroup (bubarkan grup)',()=>ungroup(),'Shift+Ctrl+G'],['Kunci / buka kunci layer',()=>{A.lock=A.lock?0:1;ui()}],'-',['Naikkan',act('#lUp')],['Turunkan',act('#lDn')],['Gabung layer (Merge Down)',mergeLayers,'Ctrl+E'],'-',['Layer dari seleksi',selOp.copy,'Ctrl+J'],['Skala layer…',ask('Skala layer (%)','50','#sc','#xL')],['Pas kanvas',act('#xF')],'-',['Terapkan penyesuaian ke piksel',act('#bBake')],['Ratakan gambar',act('#lFlat')]]],
+['Layer',()=>[['Layer baru',act('#lAdd')],['Duplikat layer / grup',act('#lDup'),'Ctrl+J'],['Hapus layer',act('#lDel')],['Grup layer (folder)',createGroup,'Ctrl+G'],['Ungroup (bubarkan grup)',()=>ungroup(),'Shift+Ctrl+G'],['Kunci / buka kunci layer',()=>{A.lock=A.lock?0:1;ui()}],'-',['Naikkan',act('#lUp')],['Turunkan',act('#lDn')],['Gabung layer (Merge Down)',mergeLayers,'Ctrl+E'],'-',['Layer dari seleksi',selOp.copy,'Ctrl+J'],['Skala layer…',ask('Skala layer (%)','50','#sc','#xL')],['Pas kanvas',act('#xF')],'-',['Terapkan penyesuaian ke piksel',act('#bBake')],['Ratakan gambar',act('#lFlat')]]],
 ['Type',()=>[['Alat teks',tool('text'),'T'],['Ukuran teks…',()=>askBox('Ukuran teks (px)',fsz.value,v=>{if(v){fsz.value=v;setT('text')}})],'-',...[...fam.options].map(o=>['Font: '+o.text,()=>{fam.value=o.value;setT('text')}])]],
 ['Select',()=>[['Semua',selOp.all,'Ctrl+A'],['Batal pilih',selOp.none,'Ctrl+D'],['Balik seleksi',selOp.inv],'-',['Pilih kotak',tool('sel'),'M'],['Pilih elips',tool('esel'),'N'],['Lasso',tool('lasso'),'Q'],['Magic wand',tool('wand'),'W']]],
 ['Filter',()=>[['Hitam putih',flt(f=>f.g=100)],['Sepia',flt(f=>f.se=100)],['Negatif',flt(f=>f.i=100)],'-',['Blur 4 px',flt(f=>f.bl=4)],['Blur 10 px',flt(f=>f.bl=10)],'-',['Lebih terang',flt(f=>f.b=Math.min(200,f.b+20))],['Lebih gelap',flt(f=>f.b=Math.max(0,f.b-20))],['Kontras +',flt(f=>f.c=Math.min(200,f.c+20))],['Kontras −',flt(f=>f.c=Math.max(0,f.c-20))],['Saturasi +',flt(f=>f.s=Math.min(200,f.s+20))],'-',['Reset filter',()=>{A.f=F0();push();sync()}]]],
@@ -1153,7 +1178,7 @@ const AL=(v,p)=>`<button class="ib" data-fn="al" data-v="${v}" title="Rata ${v}"
 const FONTS=[...fam.options].map(o=>o.value);
 const BARS={
  move:()=>`<label class="ob" title="Klik di kanvas langsung memilih layer teratas yang tidak terkunci dan pikselnya tidak transparan" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="autoSelChk" ${AUTOSEL?'checked':''}> Auto-Select</label>`+hint('Seret untuk memindahkan layer atau isi seleksi · Shift = lurus (45°)')+SEP+['#bFH|⇋ Balik H','#bFV|⇅ Balik V','#bRot|⟳ Putar 90°'].map(x=>{const[a,b]=x.split('|');return`<button class="ob" data-click="${a}">${b}</button>`}).join(''),
- xf:()=>`<label class="ol">Skala<input type="number" class="nb" data-bind="#sc" min="1" max="800">%</label><button class="ob" data-click="#xL">Skala layer</button><button class="ob" data-click="#xD">Skala gambar</button><button class="ob" data-click="#xF">Pas kanvas</button>`+SEP+hint('Tarik sudut layer · Shift = bebas'),
+ xf:()=>`<label class="ol">Skala<input type="number" class="nb" data-bind="#sc" min="1" max="800">%</label><button class="ob" data-click="#xL">Skala layer</button><button class="ob" data-click="#xD">Skala gambar</button><button class="ob" data-click="#xF">Pas kanvas</button>`+SEP+hint('Tarik sudut = skala (Shift = bebas) · seret di luar kotak = putar (Shift = kelipatan 15°) · seret isi = pindah'),
  sel:()=>MI(RCT)+SEP+`<label class="ol" title="Feather (px): tepi seleksi dilembutkan">Feather<input type="number" class="nb" data-bind="#sfea" min="0" max="250">px</label>`+SELX+SEP+hint('Shift = tambah · Alt = kurangi · Shift+Alt = irisan · saat menyeret: Shift = persegi, Alt = dari tengah · seret di dalam seleksi = geser seleksi'),
  esel:()=>MI(RCT)+SEP+`<label class="ol" title="Feather (px): tepi seleksi dilembutkan">Feather<input type="number" class="nb" data-bind="#sfea" min="0" max="250">px</label>`+SELX+SEP+hint('Shift = tambah · Alt = kurangi · Shift+Alt = irisan · saat menyeret: Shift = lingkaran, Alt = dari tengah · seret di dalam seleksi = geser seleksi'),
  lasso:()=>MI(RCT)+SEP+`<label class="ol" title="Feather (px): tepi seleksi dilembutkan">Feather<input type="number" class="nb" data-bind="#sfea" min="0" max="250">px</label>`+SELX+SEP+hint('Shift = tambah · Alt = kurangi · Shift+Alt = irisan · seret di dalam seleksi = geser seleksi'),
@@ -1711,35 +1736,44 @@ IC.pen='<path d="M12 3l5 9-5 9-5-9zM12 12v5"/><circle cx="12" cy="12" r="1.5"/>'
 IC.grad='<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 12h18M7 5v14M12 5v14M17 5v14" opacity=".45"/>';
 IC.clone='<rect x="9" y="3" width="6" height="8" rx="3"/><path d="M5 21h14v-4a3 3 0 0 0-3-3H8a3 3 0 0 0-3 3z"/>';
 const CRO={mode:'free',rw:0,rh:0,del:true,fill:'b',ov:'thirds',sh:true,shv:55},GRO={type:'lin',rev:false,tr:false},CLO={src:null,off:null,al:true,all:false,set:false,cur:null};
-let CR=null,CRdoc=null,XS=null,LQ=null,CB=null;
+let CR=null,CRdoc=null,XS=null,LQ=null,CB=null,CRrot=0;
 /* ---------- Crop ---------- */
-function cropReset(){CR={x:0,y:0,w:D.w,h:D.h};CRdoc=cur}
+function cropReset(){CR={x:0,y:0,w:D.w,h:D.h};CRdoc=cur;CRrot=0}
 function cropAsp(){if(CRO.mode=='orig')return D.w/D.h;if((CRO.mode=='ratio'||CRO.mode=='wh')&&CRO.rw>0&&CRO.rh>0)return CRO.rw/CRO.rh;return SHF?1:0}
 function cropFit(){const a=cropAsp();if(!a||!CR)return;const cx0=CR.x+CR.w/2,cy0=CR.y+CR.h/2;let w=CR.w,h=CR.h;if(w/h>a)w=h*a;else h=w/a;CR={x:cx0-w/2,y:cy0-h/2,w,h}}
 function cropBox(){if(CB&&CB.isConnected)return CB;CB=document.createElement('div');CB.id='cropbox';CB.innerHTML='<svg class="cg" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>'+['nw','n','ne','e','se','s','sw','w'].map(k=>`<i class="chd ${k}"></i>`).join('');wrap.append(CB);return CB}
 const OVL={thirds:[33.333,66.667],grid:[16.667,33.333,50,66.667,83.333],golden:[38.2,61.8],diagonal:[],none:[]};
 function cropDraw(){const b=cropBox();if(T!='crop'||!cur||document.body.classList.contains('home')){b.style.display='none';return}
- if(!CR||CRdoc!==cur)cropReset();b.style.display='block';const s=1/V.s;Object.assign(b.style,{left:CR.x+'px',top:CR.y+'px',width:CR.w+'px',height:CR.h+'px',borderWidth:1.5*s+'px',boxShadow:CRO.sh?`0 0 0 99999px rgba(0,0,0,${CRO.shv/100})`:'none',margin:-1.5*s+'px 0 0 '+-1.5*s+'px'});
+ if(!CR||CRdoc!==cur)cropReset();b.style.display='block';const s=1/V.s;Object.assign(b.style,{left:CR.x+'px',top:CR.y+'px',width:CR.w+'px',height:CR.h+'px',borderWidth:1.5*s+'px',boxShadow:CRO.sh?`0 0 0 99999px rgba(0,0,0,${CRO.shv/100})`:'none',margin:-1.5*s+'px 0 0 '+-1.5*s+'px',transform:CRrot?`rotate(${CRrot}rad)`:'',transformOrigin:'50% 50%'});
  b.querySelectorAll('.chd').forEach(h=>{const z=9*s;h.style.width=h.style.height=z+'px';h.style.borderWidth=s+'px';const k=h.className.split(' ')[1];h.style.left=k.includes('w')?-z/2+'px':k.includes('e')?'calc(100% - '+z/2+'px)':'calc(50% - '+z/2+'px)';h.style.top=k.includes('n')?-z/2+'px':k.includes('s')?'calc(100% - '+z/2+'px)':'calc(50% - '+z/2+'px)';const curMap={nw:'nwse-resize',n:'ns-resize',ne:'nesw-resize',e:'ew-resize',se:'nwse-resize',s:'ns-resize',sw:'nesw-resize',w:'ew-resize'};h.style.cursor=curMap[k]||'move';});;
  const L1=OVL[CRO.ov]||[],g=b.querySelector('.cg');g.innerHTML=L1.map(v=>`<line x1="${v}" y1="0" x2="${v}" y2="100"/><line x1="0" y1="${v}" x2="100" y2="${v}"/>`).join('')+(CRO.ov=='diagonal'?'<line x1="0" y1="0" x2="100" y2="100"/><line x1="100" y1="0" x2="0" y2="100"/>':'');
- const wi=document.querySelector('[data-cr=w]'),hi=document.querySelector('[data-cr=h]');if(wi&&document.activeElement!==wi)wi.placeholder=Math.round(CR.w);if(hi&&document.activeElement!==hi)hi.placeholder=Math.round(CR.h)}
-function cropDown(p,e){if(!CR||CRdoc!==cur)cropReset();const r=12/V.s,x0=CR.x,x1=CR.x+CR.w,y0=CR.y,y1=CR.y+CR.h,xm=(x0+x1)/2,ym=(y0+y1)/2;
- const hs=[[x0,y0,-1,-1],[xm,y0,0,-1],[x1,y0,1,-1],[x1,ym,1,0],[x1,y1,1,1],[xm,y1,0,1],[x0,y1,-1,1],[x0,ym,-1,0]],h=hs.find(q=>Math.abs(q[0]-p.x)<r&&Math.abs(q[1]-p.y)<r);
- drag.cr=h?{k:'rs',ix:h[2],iy:h[3],R:{...CR}}:(p.x>x0&&p.x<x1&&p.y>y0&&p.y<y1?{k:'mv',R:{...CR}}:{k:'new',R:null})}
-function cropMove(p){const c=drag.cr,s=drag.s,a=cropAsp();if(c.k=='rs'){st.style.cursor=c.ix&&c.iy?(c.ix*c.iy>0?'nwse-resize':'nesw-resize'):c.ix?'ew-resize':'ns-resize'}else if(c.k=='mv'){st.style.cursor='move'}if(c.k=='mv'){const cq=SHF?snap45(s,p):p;CR={...c.R,x:c.R.x+cq.x-s.x,y:c.R.y+cq.y-s.y}}
- else if(c.k=='new'){let w=p.x-s.x,h=p.y-s.y;if(a){if(Math.abs(w)/a>Math.abs(h))h=Math.sign(h||1)*Math.abs(w)/a;else w=Math.sign(w||1)*Math.abs(h)*a}CR={x:Math.min(s.x,s.x+w),y:Math.min(s.y,s.y+h),w:Math.max(4,Math.abs(w)),h:Math.max(4,Math.abs(h))}}
- else{const R=c.R;let x0=R.x,x1=R.x+R.w,y0=R.y,y1=R.y+R.h;if(c.ix<0)x0=Math.min(p.x,x1-4);if(c.ix>0)x1=Math.max(p.x,x0+4);if(c.iy<0)y0=Math.min(p.y,y1-4);if(c.iy>0)y1=Math.max(p.y,y0+4);
+ const wi=document.querySelector('[data-cr=w]'),hi=document.querySelector('[data-cr=h]');if(wi&&document.activeElement!==wi)wi.placeholder=Math.round(CR.w);if(hi&&document.activeElement!==hi)hi.placeholder=Math.round(CR.h);const ai=document.querySelector('[data-cr=ang]');if(ai&&document.activeElement!==ai)ai.value=CRrot?+(CRrot*180/Math.PI).toFixed(1):''}
+const cropLocal=(p,c)=>{c=c||{x:CR.x+CR.w/2,y:CR.y+CR.h/2};const a=-CRrot,co=Math.cos(a),si=Math.sin(a),dx=p.x-c.x,dy=p.y-c.y;return{x:c.x+dx*co-dy*si,y:c.y+dx*si+dy*co}};
+/* zona putar: di luar kotak crop, dekat salah satu sudutnya (gaya Photoshop) */
+function cropRotHit(p){if(!CR||CRdoc!==cur)return false;const q=cropLocal(p),x0=CR.x,x1=CR.x+CR.w,y0=CR.y,y1=CR.y+CR.h,r=12/V.s,RR=56/V.s;if(q.x>x0-r&&q.x<x1+r&&q.y>y0-r&&q.y<y1+r)return false;return[[x0,y0],[x1,y0],[x1,y1],[x0,y1]].some(c=>Math.hypot(q.x-c[0],q.y-c[1])<RR)}
+function cropDown(p,e){if(!CR||CRdoc!==cur)cropReset();const q=cropLocal(p),r=12/V.s,x0=CR.x,x1=CR.x+CR.w,y0=CR.y,y1=CR.y+CR.h,xm=(x0+x1)/2,ym=(y0+y1)/2;
+ const hs=[[x0,y0,-1,-1],[xm,y0,0,-1],[x1,y0,1,-1],[x1,ym,1,0],[x1,y1,1,1],[xm,y1,0,1],[x0,y1,-1,1],[x0,ym,-1,0]],h=hs.find(k=>Math.abs(k[0]-q.x)<r&&Math.abs(k[1]-q.y)<r);
+ drag.cr=h?{k:'rs',ix:h[2],iy:h[3],R:{...CR}}:(q.x>x0&&q.x<x1&&q.y>y0&&q.y<y1?{k:'mv',R:{...CR}}:cropRotHit(p)?{k:'rot',cx:xm,cy:ym,a0:Math.atan2(p.y-ym,p.x-xm),r0:CRrot}:{k:'new',R:null})}
+function cropMove(p){const c=drag.cr,s=drag.s,a=cropAsp();if(c.k=='rs'){st.style.cursor=c.ix&&c.iy?(c.ix*c.iy>0?'nwse-resize':'nesw-resize'):c.ix?'ew-resize':'ns-resize'}else if(c.k=='mv'){st.style.cursor='move'}else if(c.k=='rot'){setRotCur()}if(c.k=='mv'){const cq=SHF?snap45(s,p):p;CR={...c.R,x:c.R.x+cq.x-s.x,y:c.R.y+cq.y-s.y}}
+ else if(c.k=='rot'){let an=c.r0+Math.atan2(p.y-c.cy,p.x-c.cx)-c.a0;if(SHF){const stp=Math.PI/12;an=Math.round(an/stp)*stp}while(an>Math.PI)an-=2*Math.PI;while(an<=-Math.PI)an+=2*Math.PI;CRrot=an}
+ else if(c.k=='new'){CRrot=0;let w=p.x-s.x,h=p.y-s.y;if(a){if(Math.abs(w)/a>Math.abs(h))h=Math.sign(h||1)*Math.abs(w)/a;else w=Math.sign(w||1)*Math.abs(h)*a}CR={x:Math.min(s.x,s.x+w),y:Math.min(s.y,s.y+h),w:Math.max(4,Math.abs(w)),h:Math.max(4,Math.abs(h))}}
+ else{const R=c.R,C0={x:R.x+R.w/2,y:R.y+R.h/2},q=cropLocal(p,C0);let x0=R.x,x1=R.x+R.w,y0=R.y,y1=R.y+R.h;if(c.ix<0)x0=Math.min(q.x,x1-4);if(c.ix>0)x1=Math.max(q.x,x0+4);if(c.iy<0)y0=Math.min(q.y,y1-4);if(c.iy>0)y1=Math.max(q.y,y0+4);
   if(a){let w=x1-x0,h=y1-y0;if(c.ix&&c.iy){if(w/a>h)h=w/a;else w=h*a;if(c.ix<0)x0=x1-w;else x1=x0+w;if(c.iy<0)y0=y1-h;else y1=y0+h}else if(c.ix){h=w/a;const cy0=(R.y+R.y+R.h)/2;y0=cy0-h/2;y1=cy0+h/2;if(c.ix<0)x0=x1-w;else x1=x0+w}else{w=h*a;const cx0=R.x+R.w/2;x0=cx0-w/2;x1=cx0+w/2;if(c.iy<0)y0=y1-h;else y1=y0+h}}
-  CR={x:x0,y:y0,w:x1-x0,h:y1-y0}}
+  {const w1=x1-x0,h1=y1-y0,dx=(x0+x1)/2-C0.x,dy=(y0+y1)/2-C0.y,co=Math.cos(CRrot),si=Math.sin(CRrot),rx=C0.x+dx*co-dy*si,ry=C0.y+dx*si+dy*co;CR={x:rx-w1/2,y:ry-h1/2,w:w1,h:h1}}}
  cropDraw()}
 function cropCommit(){if(!CR||CRdoc!==cur)return;let x=Math.round(CR.x),y=Math.round(CR.y),w=Math.round(CR.w),h=Math.round(CR.h);if(w<2||h<2)return;
- const tg=CRO.mode=='wh'&&CRO.rw>0&&CRO.rh>0,ow=tg?Math.round(CRO.rw):w,oh=tg?Math.round(CRO.rh):h,kx=ow/w,ky=oh/h,ext=x<0||y<0||x+w>D.w||y+h>D.h;
- L.forEach((l,i)=>{if(CRO.del||tg||(ext&&i==0)){const n=mk(ow,oh),g=n.getContext('2d');if(i==0&&ext&&CRO.fill!='t'){g.fillStyle=CRO.fill=='f'?col.value:col2.value;g.fillRect(0,0,ow,oh)}g.imageSmoothingQuality='high';g.drawImage(l.c,(l.x-x)*kx,(l.y-y)*ky,l.c.width*kx,l.c.height*ky);l.c=n;l.x=l.y=0}else{l.x-=x;l.y-=y}});
+ const rot=Math.abs(CRrot)>1e-4?CRrot:0,ccx=CR.x+CR.w/2,ccy=CR.y+CR.h/2;
+ const tg=CRO.mode=='wh'&&CRO.rw>0&&CRO.rh>0,ow=tg?Math.round(CRO.rw):w,oh=tg?Math.round(CRO.rh):h,kx=ow/w,ky=oh/h;let ext=x<0||y<0||x+w>D.w||y+h>D.h;
+ if(rot){const co=Math.cos(rot),si=Math.sin(rot);ext=[[-1,-1],[1,-1],[1,1],[-1,1]].some(([a,b])=>{const u=a*w/2,v=b*h/2,px=ccx+u*co-v*si,py=ccy+u*si+v*co;return px<-.5||py<-.5||px>D.w+.5||py>D.h+.5})}
+ /* transformasi doc -> hasil crop (skala, lalu putar balik sebesar sudut kotak) */
+ const place=g=>{g.scale(kx,ky);if(rot){g.translate(w/2,h/2);g.rotate(-rot);g.translate(-ccx,-ccy)}else g.translate(-x,-y)};
+ L.forEach((l,i)=>{if(rot||CRO.del||tg||(ext&&i==0)){const n=mk(ow,oh),g=n.getContext('2d');if(i==0&&ext&&CRO.fill!='t'){g.fillStyle=CRO.fill=='f'?col.value:col2.value;g.fillRect(0,0,ow,oh)}g.imageSmoothingQuality='high';g.save();place(g);g.drawImage(l.c,l.x,l.y);g.restore();l.c=n;l.x=l.y=0}else{l.x-=x;l.y-=y}
+  if(l.mask&&l.mask.getContext){const m=mk(ow,oh),mg=m.getContext('2d');mg.fillStyle='#fff';mg.fillRect(0,0,ow,oh);mg.imageSmoothingQuality='high';mg.save();place(mg);mg.clearRect(0,0,D.w,D.h);mg.drawImage(l.mask,0,0);mg.restore();l.mask=m}});
  D.w=ow;D.h=oh;SEL=null;cur.pen=null;CR=null;push();sync();fit();cropReset();cropDraw()}
 function cropCancel(){cropReset();cropDraw()}
 function setRatio(v){const m={'free':['ratio',0,0],'wh':['wh',0,0],'orig':['orig',0,0],'1:1':['ratio',1,1],'4:5':['ratio',4,5],'5:7':['ratio',5,7],'2:3':['ratio',2,3],'16:9':['ratio',16,9]}[v]||['ratio',0,0];CRO.mode=m[0];CRO.rw=m[1];CRO.rh=m[2];CRO.sel=v;if(m[0]=='wh'&&CR){CRO.rw=Math.round(CR.w);CRO.rh=Math.round(CR.h)}cropFit();syncCropBar();cropDraw()}
 function syncCropBar(){const q=k=>document.querySelector(`[data-cr=${k}]`);if(!q('rat'))return;q('rat').value=CRO.sel||'free';const w=q('w'),h=q('h');if(document.activeElement!==w)w.value=CRO.rw||'';if(document.activeElement!==h)h.value=CRO.rh||'';q('del').checked=CRO.del;q('fill').value=CRO.fill}
-function cropCtl(k,el){if(k=='rat')setRatio(el.value);else if(k=='w'||k=='h'){CRO[k=='w'?'rw':'rh']=+el.value||0;if(CRO.mode=='free'||CRO.mode=='orig'){CRO.mode='ratio';CRO.sel='free'}if(CRO.mode=='wh'&&CRO.rw>0&&CRO.rh>0&&CR){const a=CRO.rw/CRO.rh;CR={x:CR.x,y:CR.y,w:CR.w,h:CR.w/a}}else cropFit();cropDraw()}else if(k=='del')CRO.del=el.checked;else if(k=='fill')CRO.fill=el.value;else if(k=='sh'){CRO.sh=el.checked;cropDraw()}else if(k=='shv'){CRO.shv=+el.value;cropDraw()}}
+function cropCtl(k,el){if(k=='rat')setRatio(el.value);else if(k=='w'||k=='h'){CRO[k=='w'?'rw':'rh']=+el.value||0;if(CRO.mode=='free'||CRO.mode=='orig'){CRO.mode='ratio';CRO.sel='free'}if(CRO.mode=='wh'&&CRO.rw>0&&CRO.rh>0&&CR){const a=CRO.rw/CRO.rh;CR={x:CR.x,y:CR.y,w:CR.w,h:CR.w/a}}else cropFit();cropDraw()}else if(k=='ang'){CRrot=(+el.value||0)*Math.PI/180;if(CR&&CRdoc===cur)cropDraw()}else if(k=='del')CRO.del=el.checked;else if(k=='fill')CRO.fill=el.value;else if(k=='sh'){CRO.sh=el.checked;cropDraw()}else if(k=='shv'){CRO.shv=+el.value;cropDraw()}}
 function straighten(){askBox('Luruskan: sudut rotasi (°, − = berlawanan jarum jam). Sudut kanvas akan terpotong.','0',v=>{const a=(+v||0)*Math.PI/180;if(!a)return;L.forEach(l=>{const n=mk(D.w,D.h),g=n.getContext('2d');g.translate(D.w/2,D.h/2);g.rotate(a);g.translate(-D.w/2,-D.h/2);g.drawImage(l.c,l.x,l.y);l.c=n;l.x=l.y=0});SEL=null;push();sync()})}
 /* ---------- Pen ---------- */
 const PEN=()=>cur.pen||(cur.pen={pts:[],closed:false});
@@ -1796,7 +1830,7 @@ function ovrX(){if(QM&&SEL){if(!SEL.q||SEL.qm!==SEL.m){const t=mk(D.w,D.h),g=t.g
 function newDown(p,e){if(T=='crop')cropDown(p,e);else if(T=='pen')penDown(p,e);else if(T=='grad')drag.g={a:p};else if(T=='clone'){cloneDown(p,e);if(drag&&drag.cl&&e.shiftKey&&lspOK()){drag.last={x:LSP.x,y:LSP.y};cloneMove(p)}}else if(T=='xsel')xsDown(p);else if(T=='liq'){if(!LQ||LQ.l!==A)lqInit();lqDown(p)}}
 function newMove(p,e){e=e||{};if(!drag)return;if(T=='crop')cropMove(p);else if(T=='pen')penMove(p,e);else if(T=='grad'){drag.g.b=e.shiftKey?snap45(drag.g.a,p):p;ovr()}else if(T=='clone')cloneMove(lockP(p,e));else if(T=='xsel')xsMove(p);else if(T=='liq'&&LQ){const lq0=lockP(p,e);drag.last=lq0;lqMove(lq0)}}
 function newUp(d,p,e){if(T=='grad'&&d.g)gradApply(d.g.a,e&&e.shiftKey?snap45(d.g.a,p):p);else if(T=='clone'&&d.cl){clipSel();bk=null;push();render();ovr()}else if(T=='pen'){ovr()}}
-function toolHook(old,k){applyCursor(k);if(old=='liq'&&k!='liq')lqEnd(true);if(old=='xsel'&&k!='xsel')XS=null;if(k=='xsel')xsInit();if(k=='crop'){if(!CR||CRdoc!==cur)cropReset()}cropDraw()}
+function toolHook(old,k){applyCursor(k);if(old=='xf'&&k!='xf')XFS=null;if(old=='liq'&&k!='liq')lqEnd(true);if(old=='xsel'&&k!='xsel')XS=null;if(k=='xsel')xsInit();if(k=='crop'){if(!CR||CRdoc!==cur)cropReset()}cropDraw()}
 function afterOpts(){if(T=='crop'){syncCropBar();cropDraw()}}
 /* ---------- Bar ---------- */
 const BTN=(a,b)=>`<button class="ob" data-fn="${a}">${b}</button>`;
@@ -1805,6 +1839,7 @@ BARS.crop=()=>`<span class="ib" style="opacity:.7;width:auto;gap:4px">${oic('<pa
  `<input class="nb" data-cr="w" type="number" min="0" placeholder="0" title="Lebar / rasio"><button class="ib" data-fn="crsw" title="Tukar W dan H">${oic('<path d="M7 4L3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/>',18)}</button><input class="nb" data-cr="h" type="number" min="0" placeholder="0" title="Tinggi / rasio">`+
  `<button class="ob" data-fn="crclr" style="border-radius:16px;padding:4px 16px;font-weight:600">Clear</button>`+
  `<button class="ib" data-fn="crstr" title="Luruskan (Straighten)">${oic('<path d="M3 17L21 9M5 21l-2-4 4-2M17 5l4 4"/>',18)}</button>`+
+ `<input class="nb" data-cr="ang" type="number" step="0.5" placeholder="0" title="Sudut rotasi crop (°). Atau seret di luar sudut kotak crop (Shift = kelipatan 15°)" style="width:62px">°`+
  `<button class="ib pk" data-pop="crov" title="Overlay">${oic('<rect x="3" y="3" width="18" height="18"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/>',18)}</button>`+
  `<button class="ib pk" data-pop="crset" title="Pengaturan crop">${oic('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',18)}</button>`+
  `<label class="ol"><input type="checkbox" data-cr="del"> Delete Cropped Pixels</label>`+
@@ -4447,7 +4482,7 @@ async function psdRead(buf){
  const f=window.cropDraw;
  if(typeof f==='function')window.cropDraw=function(){
   const r=f.apply(this,arguments);
-  try{const d=!!(CR&&CRdoc===cur&&D&&(Math.abs(CR.x)>.5||Math.abs(CR.y)>.5||Math.abs(CR.w-D.w)>.5||Math.abs(CR.h-D.h)>.5));
+  try{const d=!!(CR&&CRdoc===cur&&D&&(Math.abs(CR.x)>.5||Math.abs(CR.y)>.5||Math.abs(CR.w-D.w)>.5||Math.abs(CR.h-D.h)>.5||Math.abs(CRrot)>1e-4));
    document.body.classList.toggle('crop-dirty',d)}catch(_){}
   return r};
  try{window.cropDraw()}catch(_){}
