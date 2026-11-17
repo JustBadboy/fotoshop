@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!--SPLASH_VERSION=3-->
+<!--SPLASH_VERSION=4-->
 <html lang="id"><head><meta charset="utf-8">
 <meta name="splash-size" content="545x612">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -69,7 +69,12 @@ function loop(n){if(!t0)t0=n;
  if(!fin)t.textContent=msg[Math.min(3,Math.floor(pr/0.92*3.99))];
  if(!(fin&&pr>0.999))requestAnimationFrame(loop);else{f.style.width='100%';p.textContent='100%'}}
 requestAnimationFrame(loop);
-/* dipanggil dari main.js bila aplikasi baru saja diperbarui sejak pembukaan terakhir */
+/* lencana "Aplikasi diperbarui": index.html mencatat versinya di localStorage (fs_appver); splash membandingkannya
+   dengan versi yang terakhir ia lihat (fs_splash_seen). Naik = baru diperbarui -> tampilkan sekali. Tanpa perubahan main.js / exe. */
 window.setUpdated=function(ver,prev){const u=document.getElementById('u');if(!u||!ver)return;
  document.getElementById('uv').textContent=(prev?'v'+prev+' → ':'')+'v'+ver;u.classList.add('on')};
+(function(){try{const ls=window.localStorage,cur=ls.getItem('fs_appver'),seen=ls.getItem('fs_splash_seen');if(!cur)return;
+ const vc=(a,b)=>{const x=String(a).split('.').map(n=>parseInt(n)||0),y=String(b).split('.').map(n=>parseInt(n)||0);for(let i=0;i<Math.max(x.length,y.length);i++){const d=(x[i]||0)-(y[i]||0);if(d)return d>0?1:-1}return 0};
+ if(seen&&vc(cur,seen)>0)window.setUpdated(cur,seen);
+ if(seen!==cur)ls.setItem('fs_splash_seen',cur)}catch(e){}})();
 </script></body></html>
