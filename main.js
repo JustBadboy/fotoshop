@@ -11,6 +11,7 @@ const UPD_DIR = () => path.join(app.getPath('userData'), 'updates');
 const SPLASH_HOT = () => path.join(UPD_DIR(), 'splash.html'), SPLASH_IMG_HOT = () => path.join(UPD_DIR(), 'splash.jpg'), SPLASH_META = () => path.join(UPD_DIR(), 'splash.json');
 const readSplashVer = f => { try { const m = fs.readFileSync(f, 'utf8').match(/SPLASH_VERSION[=:]\s*([\d.]+)/); return m ? m[1] : '0' } catch (e) { return '0' } };
 const readMeta = () => { try { return JSON.parse(fs.readFileSync(SPLASH_META(), 'utf8')) } catch (e) { return {} } };
+const LAST_VER = () => path.join(app.getPath('userData'), 'lastversion.json');   // versi aplikasi pada pembukaan terakhir
 const SPLASH_MIN_MS = 5000;                                // lama minimal splash tampil (ms) sebelum jendela utama muncul
 
 const cmp = (a, b) => { const x = String(a).split('.').map(n => parseInt(n) || 0), y = String(b).split('.').map(n => parseInt(n) || 0);
@@ -22,6 +23,18 @@ function pickIndex() {
   const u = UPDATED();
   if (fs.existsSync(u) && cmp(readVer(u), readVer(BUNDLED)) > 0) return u;
   return BUNDLED;
+}
+
+// versi aplikasi yang sedang berjalan = APP_VERSION dari index.html yang dipakai (bawaan / hasil update); cadangan: versi package.json
+const currentVer = () => { const v = readVer(pickIndex()); return v !== '0' ? v : app.getVersion() };
+// bandingkan dengan versi pembukaan terakhir. Mengembalikan { cur, prev, updated } lalu mencatat versi saat ini.
+// Pembukaan pertama (belum ada catatan) tidak dianggap pembaruan.
+function checkJustUpdated() {
+  const cur = currentVer(); let prev = null;
+  try { prev = JSON.parse(fs.readFileSync(LAST_VER(), 'utf8')).version || null } catch (e) {}
+  const updated = !!prev && cmp(cur, prev) > 0;
+  if (prev !== cur) { try { fs.mkdirSync(path.dirname(LAST_VER()), { recursive: true }); fs.writeFileSync(LAST_VER(), JSON.stringify({ version: cur })) } catch (e) {} }
+  return { cur, prev, updated };
 }
 
 function download(url, redirects = 5) {
@@ -66,7 +79,12 @@ function createSplash() {
 }
 function createWindow() {
   const t0 = Date.now();
+  const upd = checkJustUpdated();
   splash = createSplash();
+  // tampilkan lencana "Aplikasi diperbarui" di splash (diabaikan otomatis oleh splash lama yang belum punya fungsinya)
+  if (splash && upd.updated) splash.webContents.once('did-finish-load', () => {
+    if (splash && !splash.isDestroyed()) splash.webContents.executeJavaScript('window.setUpdated&&window.setUpdated(' + JSON.stringify(upd.cur) + ',' + JSON.stringify(upd.prev) + ')').catch(() => {});
+  });
   win = new BrowserWindow({
     width: 1400, height: 900, backgroundColor: '#1e1e1e', show: false, icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
