@@ -3196,6 +3196,7 @@ M.splice(hi3<0?M.length:hi3,0,['Plugin',()=>[...FSPlugin.list.map(pl=>[pl.name,n
    =================================================================== */
 (function(){
 const APP_VERSION='1.1.0';          /* NAIKKAN angka ini setiap kali Anda merilis index.html baru */
+try{LS.set('fs_appver',APP_VERSION)}catch(e){}   /* dibaca splash.html untuk menampilkan lencana "Aplikasi diperbarui" */
 const UPDATE_URL_DEFAULT='';        /* isi alamat version.json di sini agar langsung aktif (opsional) */
 const vc=(a,b)=>{const x=String(a).split('.').map(n=>parseInt(n)||0),y=String(b).split('.').map(n=>parseInt(n)||0);for(let i=0;i<Math.max(x.length,y.length);i++){const d=(x[i]||0)-(y[i]||0);if(d)return d>0?1:-1}return 0};
 const getUrl=()=>LS.get('sf_upd_url')||UPDATE_URL_DEFAULT;
