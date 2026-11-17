@@ -1,0 +1,16 @@
+{
+  "version": "1.1.0",
+  "htmlUrl": "https://raw.githubusercontent.com/JustBadboy/fotoshop/refs/heads/main/index.html",
+  "sha256": "a496a16e6707881cb92cb3120ad471c1bff8a54bc8efa96e79ff4e0666a858cf",
+  "notes": [
+    "Free Transform (Ctrl+T) kini bisa memutar layer (seret di luar kotak, Shift = 15°)",
+    "Tool Crop bisa memutar (seret di luar sudut kotak, atau isi sudut di toolbar)",
+    "Ctrl+J menduplikat layer atau grup; dengan seleksi = layer dari seleksi",
+    "Splash menampilkan lencana 'Aplikasi diperbarui'"
+  ],
+  "splash": {
+    "version": "4",
+    "htmlUrl": "https://raw.githubusercontent.com/JustBadboy/fotoshop/refs/heads/main/splash.html",
+    "htmlSha256": "96c41ba02c525c753b5ef01c61920b1fb912ca3271afa674807bb18bdb3e7c7b"
+  }
+}
