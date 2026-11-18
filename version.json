@@ -1,12 +1,9 @@
 {
-  "version": "1.2.0",
+  "version": "1.3.0",
   "htmlUrl": "index.html",
-  "sha256": "7bcac357d37c984bd9c64ae05e085248e3ac70ce97d9d4bc42aa0171aa603a86",
+  "sha256": "2e7a5d1ac93e4d25e1fe60f3623f6eff2b6b7e890f0a4e277607d5e49aae0878",
   "notes": [
-    "Alt+klik = ambil sampel warna (kuas, isi, bentuk)",
-    "Klik kanan pada kuas = menu ukuran & jenis kuas",
-    "Ctrl+T: Enter = terapkan lalu kembali ke Move, Esc = batal",
-    "Pembaruan otomatis: dipasang sendiri saat aplikasi dibuka (tanpa dokumen terbuka)"
+    "Mode kuas (blend mode): Normal, Dissolve, Behind, Clear, Darken, Multiply, Color Burn, Linear Burn, Darker Color, Lighten, Screen, Color Dodge, Linear Dodge, Lighter Color, Overlay, Soft/Hard/Vivid/Linear/Pin Light, Hard Mix, Difference, Exclusion, Subtract, Divide, Hue, Saturation, Color, Luminosity"
   ],
   "splash": {
     "version": "4",
