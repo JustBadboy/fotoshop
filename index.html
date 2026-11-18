@@ -900,17 +900,33 @@ addEventListener('blur',()=>{SHF=false});
 /* ---- Free Transform (Ctrl+T): skala + rotasi. Sesi menyimpan bitmap asli supaya seret berulang tidak menurunkan kualitas ---- */
 let XFS=null,_rh=0;
 const xfLocal=(p,c,a)=>{const co=Math.cos(a),si=Math.sin(a),dx=p.x-c.x,dy=p.y-c.y;return{x:dx*co+dy*si,y:-dx*si+dy*co}};
-function xfSess(){const t=H[H.length-1];if(XFS&&XFS.l===A&&XFS.baked===A.c&&XFS.hs===t)return XFS;return XFS={l:A,o:A.c,baked:A.c,w:A.c.width,h:A.c.height,a:0,hs:t,cx:0,cy:0}}
+function xfSess(){const t=H[H.length-1];if(XFS&&XFS.l===A&&XFS.baked===A.c&&XFS.hs===t)return XFS;return XFS={l:A,o:A.c,baked:A.c,w:A.c.width,h:A.c.height,a:0,hs:t,hs0:t,x0:A.x,y0:A.y,cx:0,cy:0}}
 function xfBake(S){const co=Math.abs(Math.cos(S.a)),si=Math.abs(Math.sin(S.a)),bw=Math.max(1,Math.ceil(S.w*co+S.h*si-1e-6)),bh=Math.max(1,Math.ceil(S.w*si+S.h*co-1e-6));if(bw>8000||bh>8000)return false;const n=mk(bw,bh),g=n.getContext('2d');g.imageSmoothingQuality='high';g.translate(bw/2,bh/2);g.rotate(S.a);g.drawImage(S.o,-S.w/2,-S.h/2,S.w,S.h);S.l.c=n;S.baked=n;S.l.x=Math.round(S.cx-bw/2);S.l.y=Math.round(S.cy-bh/2);return true}
 function xfRotHit(p){if(!A||A.isGroup||A.lock)return false;const S=xfSess(),q=xfLocal(p,{x:A.x+A.c.width/2,y:A.y+A.c.height/2},S.a),hw=S.w/2,hh=S.h/2,r=14/V.s;if(Math.abs(q.x)<=hw&&Math.abs(q.y)<=hh)return false;return![[-1,-1],[1,-1],[1,1],[-1,1]].some(k=>Math.abs(k[0]*hw-q.x)<r&&Math.abs(k[1]*hh-q.y)<r)}
 const rotCur=()=>CUR("<path d='M20 12a8 8 0 1 1-2.5-5.8M20 4v4.5h-4.5'/>",12,12,'crosshair');
 const setRotCur=()=>{_rh=1;st.style.cursor=rotCur()};
 st.addEventListener('pointermove',e=>{if(drag||!cur||(T!='crop'&&T!='xf')){if(_rh&&!drag){_rh=0;applyCursor(T)}return}const p=pt(e),z=T=='crop'?cropRotHit(p):xfRotHit(p);if(z)setRotCur();else if(_rh){_rh=0;applyCursor(T)}});
+/* ---- Free Transform: Enter = terapkan lalu kembali ke Move, Esc = batalkan lalu kembali ke Move ---- */
+function xfValid(){const S=XFS;return!!(S&&A&&S.l===A&&S.baked===A.c&&S.hs===H[H.length-1])}
+function xfDone(){XFS=null;setT('move')}
+function xfCancel(){if(xfValid()&&XFS.hs!==XFS.hs0){const S=XFS;A.c=S.o;A.x=S.x0;A.y=S.y0;push();render()}XFS=null;setT('move')}
+/* ---- Alt+klik = ambil sampel warna (pipet sementara) pada kuas, isi, gradient, dan bentuk ---- */
+const ALTPICK=new Set(['brush','bucket','grad','rect','ellipse','line']);let _altUsed=false;
+function altSample(p){if(!cur||p.x<0||p.y<0||p.x>=D.w||p.y>=D.h)return;const d=cx.getImageData(p.x|0,p.y|0,1,1).data;if(!d[3])return;col.value='#'+[d[0],d[1],d[2]].map(v=>v.toString(16).padStart(2,'0')).join('');col.dispatchEvent(new Event('input',{bubbles:true}))}
+addEventListener('keydown',e=>{if(e.key=='Alt'&&!e.repeat&&ALTPICK.has(T)&&cur&&!drag)st.style.cursor=CURS.eyedrop});
+addEventListener('keyup',e=>{if(e.key=='Alt'){if(ALTPICK.has(T))applyCursor(T);if(_altUsed){e.preventDefault();_altUsed=false}}});
+addEventListener('blur',()=>{if(ALTPICK.has(T))applyCursor(T)});
+/* ---- Klik kanan pada kuas/penghapus/dll = menu ukuran + jenis kuas di posisi kursor ---- */
+const RCPOP=new Set(['brush','eraser','clone','heal','qsel','liq']);
+st.addEventListener('contextmenu',e=>{if(!cur||document.body.classList.contains('home')||!RCPOP.has(T)||typeof POPS[T]!='function')return;e.preventDefault();
+ const a={dataset:{pop:T},getBoundingClientRect:()=>({left:e.clientX+8,bottom:e.clientY-4})};openPop(a);
+ if(POP){const fit=()=>{if(POP)POP.style.top=Math.max(4,Math.min(e.clientY+4,innerHeight-POP.offsetHeight-8))+'px'};fit();requestAnimationFrame(fit)}});
 function shfRedraw(){if(drag&&drag.e&&(T=='rect'||T=='ellipse'||T=='line')){ovr();shape(ox,drag.s,drag.e,0,0)}}
 st.onpointerdown=e=>{st.setPointerCapture(e.pointerId);
  if(CRS&&e.button==0&&!sp){crsPick(pt(e));return}
  if(e.button==1||sp||T=='hand'){drag={pan:1,x:e.clientX,y:e.clientY,vx:V.x,vy:V.y};return}
- const p=pt(e);if(T=='move'&&e.button==0&&AUTOSEL&&!SEL)autoPick(p,e);if(!A||(A.lock&&(T=='move'||T=='xf')))return;drag={s:p,last:p,l:{x:A.x,y:A.y},md:md(e),sh0:e.shiftKey,ax:null,an:null};
+ if(e.button==2&&RCPOP.has(T))return;
+ const p=pt(e);if(e.button==0&&e.altKey&&ALTPICK.has(T)&&A){_altUsed=true;altSample(p);drag=null;return}if(T=='move'&&e.button==0&&AUTOSEL&&!SEL)autoPick(p,e);if(!A||(A.lock&&(T=='move'||T=='xf')))return;drag={s:p,last:p,l:{x:A.x,y:A.y},md:md(e),sh0:e.shiftKey,ax:null,an:null};
  if(SEL&&(T=='brush'||T=='eraser'||T=='bucket'))bk=cl(A.c);
  if((T=='sel'||T=='esel'||T=='lasso')&&SEL&&drag.md=='new'){const px=p.x|0,py=p.y|0;if(px>=0&&py>=0&&px<D.w&&py<D.h&&SEL.m.getContext('2d').getImageData(px,py,1,1).data[3]>127){drag.inside=1;drag.msel=cl(SEL.m);drag.moved=0;return}}
  if(NT.has(T)){newDown(p,e)}else if(T=='move'&&SEL){addLayer('Dipindah',lift(1));SEL=null;ovr();drag.l={x:A.x,y:A.y}}
@@ -1178,7 +1194,7 @@ const AL=(v,p)=>`<button class="ib" data-fn="al" data-v="${v}" title="Rata ${v}"
 const FONTS=[...fam.options].map(o=>o.value);
 const BARS={
  move:()=>`<label class="ob" title="Klik di kanvas langsung memilih layer teratas yang tidak terkunci dan pikselnya tidak transparan" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="autoSelChk" ${AUTOSEL?'checked':''}> Auto-Select</label>`+hint('Seret untuk memindahkan layer atau isi seleksi · Shift = lurus (45°)')+SEP+['#bFH|⇋ Balik H','#bFV|⇅ Balik V','#bRot|⟳ Putar 90°'].map(x=>{const[a,b]=x.split('|');return`<button class="ob" data-click="${a}">${b}</button>`}).join(''),
- xf:()=>`<label class="ol">Skala<input type="number" class="nb" data-bind="#sc" min="1" max="800">%</label><button class="ob" data-click="#xL">Skala layer</button><button class="ob" data-click="#xD">Skala gambar</button><button class="ob" data-click="#xF">Pas kanvas</button>`+SEP+hint('Tarik sudut = skala (Shift = bebas) · seret di luar kotak = putar (Shift = kelipatan 15°) · seret isi = pindah'),
+ xf:()=>`<label class="ol">Skala<input type="number" class="nb" data-bind="#sc" min="1" max="800">%</label><button class="ob" data-click="#xL">Skala layer</button><button class="ob" data-click="#xD">Skala gambar</button><button class="ob" data-click="#xF">Pas kanvas</button>`+SEP+BTN('xfok','✓ Terapkan (Enter)')+BTN('xfno','✕ Batal (Esc)')+SEP+hint('Tarik sudut = skala (Shift = bebas) · seret di luar kotak = putar (Shift = kelipatan 15°) · seret isi = pindah'),
  sel:()=>MI(RCT)+SEP+`<label class="ol" title="Feather (px): tepi seleksi dilembutkan">Feather<input type="number" class="nb" data-bind="#sfea" min="0" max="250">px</label>`+SELX+SEP+hint('Shift = tambah · Alt = kurangi · Shift+Alt = irisan · saat menyeret: Shift = persegi, Alt = dari tengah · seret di dalam seleksi = geser seleksi'),
  esel:()=>MI(RCT)+SEP+`<label class="ol" title="Feather (px): tepi seleksi dilembutkan">Feather<input type="number" class="nb" data-bind="#sfea" min="0" max="250">px</label>`+SELX+SEP+hint('Shift = tambah · Alt = kurangi · Shift+Alt = irisan · saat menyeret: Shift = lingkaran, Alt = dari tengah · seret di dalam seleksi = geser seleksi'),
  lasso:()=>MI(RCT)+SEP+`<label class="ol" title="Feather (px): tepi seleksi dilembutkan">Feather<input type="number" class="nb" data-bind="#sfea" min="0" max="250">px</label>`+SELX+SEP+hint('Shift = tambah · Alt = kurangi · Shift+Alt = irisan · seret di dalam seleksi = geser seleksi'),
@@ -1865,7 +1881,7 @@ Object.assign(FN,{crsw:()=>{[CRO.rw,CRO.rh]=[CRO.rh,CRO.rw];if(CRO.mode=='free'|
  penfill:()=>penPaint('fill'),penstroke:()=>penPaint('stroke'),pensel:penToSel,penclr:()=>{cur.pen=null;ovr()},
  grt:b=>{GRO.type=b.dataset.v;buildOpts()},grsw:()=>{const a=col.value;col.value=col2.value;col2.value=a;refreshBind()},
  clset:()=>{CLO.set=true;toast('Klik pada kanvas untuk menentukan sumber clone')},
- xsok:()=>setT('sel'),xsno:()=>{if(XS){SEL={m:XS.m};}XS=null;setT('sel');ovr()},lqok:()=>lqEnd(true),lqno:()=>lqEnd(false),qm:toggleQM});
+ xsok:()=>setT('sel'),xsno:()=>{if(XS){SEL={m:XS.m};}XS=null;setT('sel');ovr()},lqok:()=>lqEnd(true),lqno:()=>lqEnd(false),qm:toggleQM,xfok:()=>xfDone(),xfno:()=>xfCancel()});
 POPS.qsel_=null;
 const cB=e=>{const t=e.target;if(!t.dataset)return;if(t.dataset.cr)cropCtl(t.dataset.cr,t);else if(t.dataset.gr)GRO[t.dataset.gr]=t.checked;else if(t.dataset.cl)CLO[t.dataset.cl]=t.checked};
 document.addEventListener('input',cB);document.addEventListener('change',cB);
@@ -1873,7 +1889,7 @@ document.addEventListener('input',cB);document.addEventListener('change',cB);
 document.addEventListener('keydown',e=>{if(/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)&&!(e.ctrlKey||e.metaKey))return;if(/TEXTAREA/.test(e.target.tagName))return;const k=e.key.toLowerCase(),c=e.ctrlKey||e.metaKey,s=e.shiftKey,a=e.altKey;let f=null;
  if(c&&s&&!a&&k=='d')f=reselect;else if(c&&s&&!a&&k=='i')f=selOp.inv;else if(c&&a&&!s&&k=='f')f=lastFilter;else if(c&&a&&!s&&k=='a')f=()=>{L.forEach(l=>SELL.add(l));ui()};else if(c&&a&&s&&k=='f')f=findLayers;else if(c&&a&&!s&&k=='r')f=maskPanel;else if(c&&s&&!a&&k=='a')f=()=>fpanel('raw');else if(c&&s&&!a&&k=='r')f=()=>fpanel('lens');else if(c&&s&&!a&&k=='x')f=()=>setT('liq');
  else if(!c&&!a&&cur&&!document.body.classList.contains('home')&&!FP){if(k=='q')f=toggleQM;else if(k=='g')f=()=>setT(T=='bucket'?'grad':'bucket');else if(k=='p')f=()=>setT('pen');else if(k=='s')f=()=>setT('clone');else if(k=='l')f=()=>setT('lasso');else if(k=='u')f=()=>setT('line');
-  else if(k=='enter'&&T=='crop')f=cropCommit;else if(k=='escape'&&T=='crop')f=cropCancel;else if(k=='enter'&&(T=='xsel'||T=='liq'))f=()=>FN[T=='xsel'?'xsok':'lqok']();else if(k=='escape'&&T=='xsel')f=FN.xsno;else if((k=='backspace'||k=='delete')&&T=='pen'){f=()=>{const P0=PEN();P0.pts.pop();P0.closed=false;ovr()}}else if(k=='escape'&&T=='pen')f=()=>{cur.pen=null;ovr()}}
+  else if(k=='enter'&&T=='crop')f=cropCommit;else if(k=='escape'&&T=='crop')f=cropCancel;else if(k=='enter'&&T=='xf')f=xfDone;else if(k=='escape'&&T=='xf')f=xfCancel;else if(k=='enter'&&(T=='xsel'||T=='liq'))f=()=>FN[T=='xsel'?'xsok':'lqok']();else if(k=='escape'&&T=='xsel')f=FN.xsno;else if((k=='backspace'||k=='delete')&&T=='pen'){f=()=>{const P0=PEN();P0.pts.pop();P0.closed=false;ovr()}}else if(k=='escape'&&T=='pen')f=()=>{cur.pen=null;ovr()}}
  if(f){e.preventDefault();e.stopImmediatePropagation();f()}},true);
 /* ===== Fotoshop v3: Neural Filters (gaya baru), Gemini AI, kursor alat, scroll zoom ===== */
 const MEM={},LS={get:k=>{try{return localStorage.getItem(k)||MEM[k]||''}catch(e){return MEM[k]||''}},set:(k,v)=>{MEM[k]=v;try{localStorage.setItem(k,v)}catch(e){}},del:k=>{delete MEM[k];try{localStorage.removeItem(k)}catch(e){}}};
@@ -3195,31 +3211,40 @@ M.splice(hi3<0?M.length:hi3,0,['Plugin',()=>[...FSPlugin.list.map(pl=>[pl.name,n
    lalu menampilkan pemberitahuan jika versinya lebih baru dari APP_VERSION.
    =================================================================== */
 (function(){
-const APP_VERSION='1.1.0';          /* NAIKKAN angka ini setiap kali Anda merilis index.html baru */
+const APP_VERSION='1.2.0';          /* NAIKKAN angka ini setiap kali Anda merilis index.html baru */
 try{LS.set('fs_appver',APP_VERSION)}catch(e){}   /* dibaca splash.html untuk menampilkan lencana "Aplikasi diperbarui" */
-const UPDATE_URL_DEFAULT='';        /* isi alamat version.json di sini agar langsung aktif (opsional) */
+const UPDATE_URL_DEFAULT='https://raw.githubusercontent.com/USER/REPO/main/version.json';   /* GANTI USER/REPO dengan akun & repo GitHub Anda. Satu-satunya yang perlu diisi; pengguna tidak perlu memasukkan apa pun. */
 const vc=(a,b)=>{const x=String(a).split('.').map(n=>parseInt(n)||0),y=String(b).split('.').map(n=>parseInt(n)||0);for(let i=0;i<Math.max(x.length,y.length);i++){const d=(x[i]||0)-(y[i]||0);if(d)return d>0?1:-1}return 0};
-const getUrl=()=>LS.get('sf_upd_url')||UPDATE_URL_DEFAULT;
+const getUrl=()=>{const u=LS.get('sf_upd_url')||UPDATE_URL_DEFAULT;return /\/USER\/REPO\//.test(u)?'':u};   /* placeholder belum diganti = pengecekan mati */
+let PEND=null,busy=false,lastChk=0,DISM='';
+const safeNow=()=>!(typeof docs!=='undefined'&&docs.length);   /* aman dimuat ulang hanya bila tidak ada dokumen terbuka */
+const canAuto=j=>!!(window.electronAPI&&typeof window.electronAPI.applyUpdate=='function'&&j.htmlUrl&&j.sha256&&LS.get('sf_upd_fail')!==String(j.version)&&safeNow());
+function autoApply(j){if(busy)return;busy=true;const bn=document.getElementById('updBn');if(bn)bn.remove();toast('Memperbarui ke v'+j.version+'…');
+ window.electronAPI.applyUpdate(j).then(r=>{if(r&&!r.ok){busy=false;LS.set('sf_upd_fail',String(j.version));banner(j)}}).catch(()=>{busy=false;LS.set('sf_upd_fail',String(j.version))})}
 function setUrl(){askBox('Alamat version.json untuk cek pembaruan',getUrl()||'https://',v=>{v=(v||'').trim();if(!v||v=='https://'){LS.del('sf_upd_url');toast('Pengecekan pembaruan dimatikan');return}LS.set('sf_upd_url',v);toast('Alamat disimpan, memeriksa…');check(true)})}
 function banner(j){const old=document.getElementById('updBn');if(old)old.remove();
  const b=document.createElement('div');b.id='updBn';
  b.style.cssText='position:fixed;right:16px;bottom:16px;z-index:99999;max-width:340px;background:#2b2b2b;color:#eee;border:1px solid #3b8eea;border-radius:10px;padding:14px 16px;box-shadow:0 8px 28px #0009;font:13px/1.45 system-ui,sans-serif';
  const esc=t=>String(t).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
  b.innerHTML=`<div style="font-weight:600;font-size:14px;margin-bottom:4px">Pembaruan tersedia: v${esc(j.version)}</div><div style="color:#aaa;margin-bottom:8px">Versi Anda: v${APP_VERSION}</div>${j.notes?`<div style="margin-bottom:10px;white-space:pre-line;max-height:120px;overflow:auto">${esc(Array.isArray(j.notes)?'• '+j.notes.join('\n• '):j.notes)}</div>`:''}<div style="display:flex;gap:8px;flex-wrap:wrap"><button data-a="go" style="background:#3b8eea;color:#fff;border:0;border-radius:6px;padding:6px 12px;cursor:pointer">${(window.electronAPI&&j.htmlUrl)?'Perbarui sekarang':j.url?'Unduh pembaruan':'Muat ulang'}</button><button data-a="later" style="background:#444;color:#eee;border:0;border-radius:6px;padding:6px 12px;cursor:pointer">Nanti</button><button data-a="skip" style="background:transparent;color:#999;border:0;padding:6px 4px;cursor:pointer">Lewati versi ini</button></div>`;
- b.onclick=e=>{const a=e.target.dataset&&e.target.dataset.a;if(!a)return;
+ b.onclick=e=>{const a=e.target.dataset&&e.target.dataset.a;if(!a)return;DISM=String(j.version);PEND=null;
   if(a=='go'){if(window.electronAPI&&typeof window.electronAPI.applyUpdate=='function'&&j.htmlUrl){if(!confirm('Aplikasi akan dimuat ulang untuk memasang v'+j.version+'.\nPastikan pekerjaan Anda sudah disimpan. Lanjut?'))return;toast('Mengunduh pembaruan…');window.electronAPI.applyUpdate(j).then(r=>{if(r&&!r.ok)toast('Gagal memperbarui: '+r.error)})}else if(j.url)window.open(j.url,'_blank');else location.reload()}
   else if(a=='skip')LS.set('sf_upd_skip',j.version);
   b.remove()};
  document.body.append(b)}
 async function check(manual){const u=getUrl();if(!u){if(manual)setUrl();return}
- try{const r=await fetch(u+(u.includes('?')?'&':'?')+'t='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error(r.status);const j=await r.json();if(window.electronAPI&&window.electronAPI.updateSplash&&j.splash)window.electronAPI.updateSplash(j.splash).then(x=>{if(x&&x.updated)toast('Tampilan splash diperbarui – terlihat saat aplikasi dibuka berikutnya')}).catch(()=>{});
-  if(vc(j.version,APP_VERSION)>0){if(!manual&&LS.get('sf_upd_skip')===String(j.version))return;banner(j)}
+ try{const r=await fetch(u+(u.includes('?')?'&':'?')+'t='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error(r.status);const j=await r.json();const bs=new URL(u,location.href).href,ab=x=>x?new URL(x,bs).href:x;j.htmlUrl=ab(j.htmlUrl);if(j.splash){j.splash.htmlUrl=ab(j.splash.htmlUrl);j.splash.imgUrl=ab(j.splash.imgUrl)}   /* alamat relatif di version.json dihitung dari lokasi version.json */
+  if(window.electronAPI&&window.electronAPI.updateSplash&&j.splash)window.electronAPI.updateSplash(j.splash).then(x=>{if(x&&x.updated)toast('Tampilan splash diperbarui – terlihat saat aplikasi dibuka berikutnya')}).catch(()=>{});
+  if(vc(j.version,APP_VERSION)>0){if(!manual&&(LS.get('sf_upd_skip')===String(j.version)||DISM===String(j.version)))return;
+   if(!manual&&canAuto(j)){autoApply(j);return}   /* otomatis: tanpa dokumen terbuka -> langsung dipasang */
+   banner(j);if(!manual)PEND=j}
   else if(manual)toast('Sudah versi terbaru (v'+APP_VERSION+')')}
  catch(e){if(manual)toast('Gagal memeriksa pembaruan – cek alamat atau koneksi internet')}}
 window.FSUpdate={check,version:APP_VERSION,setUrl};
 const hi4=M.findIndex(m=>m[0]=='Help');
 if(hi4>=0){const o=M[hi4][1];M[hi4]=['Help',()=>[['Periksa pembaruan…',()=>check(true),'',0],['Alamat pembaruan…',setUrl,'',0],['Versi aplikasi: v'+APP_VERSION,null,'',0,'x'],'-',...o()]]}
-setTimeout(()=>check(false),12000);setInterval(()=>check(false),6*3600*1000);
+const run=()=>{lastChk=Date.now();check(false)};setTimeout(run,1500);setInterval(run,30*60*1000);addEventListener('focus',()=>{if(Date.now()-lastChk>10*60*1000)run()});
+setInterval(()=>{if(PEND&&!busy&&canAuto(PEND)){const j=PEND;PEND=null;autoApply(j)}},15000);   /* pembaruan tertunda dipasang otomatis begitu semua dokumen ditutup */
 })();
 
 /* ===================================================================
