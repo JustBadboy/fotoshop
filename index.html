@@ -846,7 +846,7 @@ const selOp={all:()=>comb(mkm(g=>g.fillRect(0,0,D.w,D.h)),'new'),none:()=>{SEL=n
  copy:()=>{if(!SEL||!A)return;addLayer('Seleksi',lift(0));push();sync()}};
 const pt=e=>{const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)/V.s,y:(e.clientY-r.top)/V.s}};
 const hex=c=>[1,3,5].map(i=>parseInt(c.substr(i,2),16));
-function stroke(a,b){if(QM){qmStroke(a,b);return}const g=A.c.getContext('2d');if(typeof brSoft=='function'&&brSoft()){brStroke(g,a,b);clipSel();render();return}g.save();g.globalCompositeOperation=T=='eraser'?'destination-out':'source-over';g.globalAlpha=op.value/100;g.strokeStyle=g.fillStyle=col.value;g.lineWidth=+sz.value;g.lineCap=g.lineJoin='round';g.beginPath();g.moveTo(a.x-A.x,a.y-A.y);g.lineTo(b.x-A.x+.01,b.y-A.y);g.stroke();g.restore();clipSel();render()}
+function stroke(a,b){if(QM){qmStroke(a,b);return}if(T=='brush'&&BRMODE!=='normal'){modeStroke(a,b,BRMODE);return}const g=A.c.getContext('2d');if(typeof brSoft=='function'&&brSoft()){brStroke(g,a,b);clipSel();render();return}g.save();g.globalCompositeOperation=T=='eraser'?'destination-out':'source-over';g.globalAlpha=op.value/100;g.strokeStyle=g.fillStyle=col.value;g.lineWidth=+sz.value;g.lineCap=g.lineJoin='round';g.beginPath();g.moveTo(a.x-A.x,a.y-A.y);g.lineTo(b.x-A.x+.01,b.y-A.y);g.stroke();g.restore();clipSel();render()}
 function shape(g,a,b,dx,dy){g.save();g.strokeStyle=g.fillStyle=col.value;g.globalAlpha=op.value/100;g.lineWidth=+sz.value;g.lineCap='round';g.beginPath();const x=a.x-dx,y=a.y-dy;let w=b.x-a.x,h=b.y-a.y;if(SHF){if(T=='line'){const sq=snap45(a,b);w=sq.x-a.x;h=sq.y-a.y}else{const mm=Math.max(Math.abs(w),Math.abs(h));w=Math.sign(w||1)*mm;h=Math.sign(h||1)*mm}}
  if(T=='line'){g.moveTo(x,y);g.lineTo(x+w,y+h)}else if(T=='rect')g.rect(x,y,w,h);else g.ellipse(x+w/2,y+h/2,Math.abs(w/2),Math.abs(h/2),0,0,7);
  fillc.checked&&T!='line'?g.fill():g.stroke();g.restore()}
@@ -906,6 +906,46 @@ function xfRotHit(p){if(!A||A.isGroup||A.lock)return false;const S=xfSess(),q=xf
 const rotCur=()=>CUR("<path d='M20 12a8 8 0 1 1-2.5-5.8M20 4v4.5h-4.5'/>",12,12,'crosshair');
 const setRotCur=()=>{_rh=1;st.style.cursor=rotCur()};
 st.addEventListener('pointermove',e=>{if(drag||!cur||(T!='crop'&&T!='xf')){if(_rh&&!drag){_rh=0;applyCursor(T)}return}const p=pt(e),z=T=='crop'?cropRotHit(p):xfRotHit(p);if(z)setRotCur();else if(_rh){_rh=0;applyCursor(T)}});
+/* ================= MODE KUAS (Blend Mode) — Normal, Dissolve, Behind, Clear, Darken … Luminosity =================
+   Goresan digambar ke buffer terpisah, lalu di-blend ke piksel layer SEBELUM goresan (seperti Photoshop),
+   sehingga tumpang-tindih dalam satu goresan tidak melipatgandakan efek. */
+let BRMODE='normal',BMS=null;
+const BRM_GROUPS=[[['normal','Normal'],['dissolve','Dissolve'],['behind','Behind'],['clear','Clear']],
+ [['darken','Darken'],['multiply','Multiply'],['color-burn','Color Burn'],['linear-burn','Linear Burn'],['darker-color','Darker Color']],
+ [['lighten','Lighten'],['screen','Screen'],['color-dodge','Color Dodge'],['linear-dodge','Linear Dodge (Add)'],['lighter-color','Lighter Color']],
+ [['overlay','Overlay'],['soft-light','Soft Light'],['hard-light','Hard Light'],['vivid-light','Vivid Light'],['linear-light','Linear Light'],['pin-light','Pin Light'],['hard-mix','Hard Mix']],
+ [['difference','Difference'],['exclusion','Exclusion'],['subtract','Subtract'],['divide','Divide']],
+ [['hue','Hue'],['saturation','Saturation'],['color','Color'],['luminosity','Luminosity']]];
+const brModeUI=()=>`<label class="ol">Mode<select id="brMode" title="Mode pencampuran kuas">${BRM_GROUPS.map(g=>g.map(m=>`<option value="${m[0]}" ${m[0]==BRMODE?'selected':''}>${m[1]}</option>`).join('')).join('<option disabled>──────────</option>')}</select></label>`;
+document.addEventListener('change',e=>{if(e.target&&e.target.id=='brMode')BRMODE=e.target.value});
+const BM_NATIVE={multiply:1,screen:1,overlay:1,darken:1,lighten:1,'color-dodge':1,'color-burn':1,'hard-light':1,'soft-light':1,difference:1,exclusion:1,hue:1,saturation:1,color:1,luminosity:1};
+const _cburn=(b,s)=>b>=1?1:s<=0?0:1-Math.min(1,(1-b)/s),_cdodge=(b,s)=>b<=0?0:s>=1?1:Math.min(1,b/(1-s));
+const BM_FN={'linear-burn':(b,s)=>Math.max(0,b+s-1),'linear-dodge':(b,s)=>Math.min(1,b+s),
+ 'vivid-light':(b,s)=>s<=.5?_cburn(b,2*s):_cdodge(b,2*s-1),'linear-light':(b,s)=>Math.min(1,Math.max(0,b+2*s-1)),
+ 'pin-light':(b,s)=>s<.5?Math.min(b,2*s):Math.max(b,2*s-1),'hard-mix':(b,s)=>b+s>=1?1:0,
+ subtract:(b,s)=>Math.max(0,b-s),divide:(b,s)=>s<=0?(b<=0?0:1):Math.min(1,b/s)};
+const _rnd=(x,y)=>{let h=(Math.imul(x,374761393)+Math.imul(y,668265263))|0;h=Math.imul(h^(h>>>13),1274126177);h^=h>>>16;return(h>>>0)/4294967296};
+function bmStart(){return BMS={d:drag,l:A,c:A.c,o:cl(A.c),b:mk(A.c.width,A.c.height)}}
+/* gabungkan buffer goresan (S.b) ke salinan layer awal (S.o) di area x0,y0,x1,y1 -> hasil ke A.c */
+function bmApply(S,bm,x0,y0,x1,y1){const W=A.c.width,Hh=A.c.height;x0=Math.max(0,Math.floor(x0));y0=Math.max(0,Math.floor(y0));x1=Math.min(W,Math.ceil(x1));y1=Math.min(Hh,Math.ceil(y1));const w=x1-x0,h=y1-y0;if(w<=0||h<=0)return;
+ const g=A.c.getContext('2d');g.save();g.globalAlpha=1;g.filter='none';g.globalCompositeOperation='source-over';
+ if(BM_NATIVE[bm]){g.clearRect(x0,y0,w,h);g.drawImage(S.o,x0,y0,w,h,x0,y0,w,h);g.globalCompositeOperation=bm;g.drawImage(S.b,x0,y0,w,h,x0,y0,w,h)}
+ else if(bm=='behind'){g.clearRect(x0,y0,w,h);g.drawImage(S.b,x0,y0,w,h,x0,y0,w,h);g.drawImage(S.o,x0,y0,w,h,x0,y0,w,h)}
+ else if(bm=='clear'){g.clearRect(x0,y0,w,h);g.drawImage(S.o,x0,y0,w,h,x0,y0,w,h);g.globalCompositeOperation='destination-out';g.drawImage(S.b,x0,y0,w,h,x0,y0,w,h)}
+ else{const bd=S.o.getContext('2d').getImageData(x0,y0,w,h),sd=S.b.getContext('2d').getImageData(x0,y0,w,h),B=bd.data,Sd=sd.data,f=BM_FN[bm]||((b,s)=>s);
+  for(let i=0,n=B.length;i<n;i+=4){const as=Sd[i+3]/255;if(!as)continue;const sr=Sd[i],sg=Sd[i+1],sb=Sd[i+2];
+   if(bm=='dissolve'){const px=i>>2;if(_rnd(x0+px%w,y0+((px/w)|0))<as){B[i]=sr;B[i+1]=sg;B[i+2]=sb;B[i+3]=255}continue}
+   const r=B[i],gg=B[i+1],bl=B[i+2],ab=B[i+3]/255,ao=as+ab-as*ab;let nr,ng,nb;
+   if(bm=='darker-color'||bm=='lighter-color'){const ls=.3*sr+.59*sg+.11*sb,lb=.3*r+.59*gg+.11*bl,pickS=bm=='darker-color'?ls<lb:ls>lb;nr=pickS?sr:r;ng=pickS?sg:gg;nb=pickS?sb:bl}
+   else{nr=f(r/255,sr/255)*255;ng=f(gg/255,sg/255)*255;nb=f(bl/255,sb/255)*255}
+   const k1=as*(1-ab),k2=as*ab,k3=(1-as)*ab;B[i]=(k1*sr+k2*nr+k3*r)/ao;B[i+1]=(k1*sg+k2*ng+k3*gg)/ao;B[i+2]=(k1*sb+k2*nb+k3*bl)/ao;B[i+3]=ao*255}
+  g.putImageData(bd,x0,y0)}
+ g.restore()}
+function modeStroke(a,b,bm){const S=BMS&&BMS.d===drag&&BMS.l===A&&BMS.c===A.c?BMS:bmStart(),g=S.b.getContext('2d');
+ if(typeof brSoft=='function'&&brSoft())brStroke(g,a,b);
+ else{g.save();g.globalCompositeOperation='source-over';g.globalAlpha=op.value/100;g.strokeStyle=g.fillStyle=col.value;g.lineWidth=+sz.value;g.lineCap=g.lineJoin='round';g.beginPath();g.moveTo(a.x-A.x,a.y-A.y);g.lineTo(b.x-A.x+.01,b.y-A.y);g.stroke();g.restore()}
+ const r=Math.ceil(+sz.value/2)+4,ax=a.x-A.x,ay=a.y-A.y,bx=b.x-A.x,by=b.y-A.y;
+ bmApply(S,bm,Math.min(ax,bx)-r,Math.min(ay,by)-r,Math.max(ax,bx)+r,Math.max(ay,by)+r);clipSel();render()}
 /* ---- Free Transform: Enter = terapkan lalu kembali ke Move, Esc = batalkan lalu kembali ke Move ---- */
 function xfValid(){const S=XFS;return!!(S&&A&&S.l===A&&S.baked===A.c&&S.hs===H[H.length-1])}
 function xfDone(){XFS=null;setT('move')}
@@ -950,7 +990,7 @@ st.onpointermove=e=>{if(!drag)return;
  else if(drag.xf){const f=drag.xf,S=XFS;drag.did=1;const co=Math.cos(f.a),si=Math.sin(f.a),q=xfLocal(p,f.c,f.a),sx=f.i==0||f.i==3?-1:1,sy=f.i<2?-1:1,ax=-sx*f.w/2,ay=-sy*f.h/2;let w=Math.abs(q.x-ax),h=Math.abs(q.y-ay);if(!e.shiftKey){const k=Math.max(w/f.w,h/f.h);w=f.w*k;h=f.h*k}w=Math.max(4,Math.round(w));h=Math.max(4,Math.round(h));const lx=ax+sx*w/2,ly=ay+sy*h/2;S.w=w;S.h=h;S.cx=f.c.x+lx*co-ly*si;S.cy=f.c.y+lx*si+ly*co;if(xfBake(S)){render();ovr()}}
  else if(T=='move'||drag.mv){if(!drag.ls)drag.ls=[...new Set([...SELL,...(A.isGroup?L.filter(x=>x.inGroup===A.id):[])])].filter(l=>l!==A&&!l.lock).map(l=>[l,l.x,l.y]);const mq=e.shiftKey?snap45(drag.s,p):p;A.x=Math.round(drag.l.x+mq.x-drag.s.x);A.y=Math.round(drag.l.y+mq.y-drag.s.y);drag.ls.forEach(([l,x,y])=>{l.x=x+Math.round(mq.x-drag.s.x);l.y=y+Math.round(mq.y-drag.s.y)});render();ovr()}
  else{ovr();drag.e=p;if(T=='lasso'){drag.pts=drag.pts||[drag.s];const lq=lockP(p,e);drag.last=lq;drag.pts.push(lq);ox.save();ox.shadowColor='#000';ox.shadowBlur=2;ox.lineWidth=Math.max(1,1/V.s);ox.setLineDash([5,4]);ox.strokeStyle='#fff';ox.beginPath();drag.pts.forEach((q,i)=>i?ox.lineTo(q.x,q.y):ox.moveTo(q.x,q.y));ox.stroke();ox.restore()}else if(T=='sel'||T=='esel'){ox.save();ox.shadowColor='#000';ox.shadowBlur=2;ox.lineWidth=Math.max(1,1/V.s);ox.setLineDash([5,4]);ox.strokeStyle='#fff';ox.beginPath();selPath(ox,drag.s,p,drag.mod={sh:e.shiftKey,al:e.altKey});ox.stroke();ox.restore()}else if(T=='crop'){ox.save();ox.fillStyle='#0008';ox.fillRect(0,0,D.w,D.h);ox.clearRect(drag.s.x,drag.s.y,p.x-drag.s.x,p.y-drag.s.y);ox.setLineDash([6,4]);ox.strokeStyle='#fff';ox.strokeRect(drag.s.x,drag.s.y,p.x-drag.s.x,p.y-drag.s.y);ox.restore()}else shape(ox,drag.s,p,0,0)}};
-st.onpointerup=e=>{if(!drag)return;const d=drag;drag=null;if(d.pan)return;if((T=='brush'||T=='eraser'||T=='heal'||(T=='clone'&&d.cl))&&d.last)LSP={x:d.last.x,y:d.last.y,l:A,d:cur};if(NT.has(T)){newUp(d,pt(e),e);return}const p=d.e||pt(e);bk=null;ovr();
+st.onpointerup=e=>{if(!drag)return;const d=drag;drag=null;BMS=null;if(d.pan)return;if((T=='brush'||T=='eraser'||T=='heal'||(T=='clone'&&d.cl))&&d.last)LSP={x:d.last.x,y:d.last.y,l:A,d:cur};if(NT.has(T)){newUp(d,pt(e),e);return}const p=d.e||pt(e);bk=null;ovr();
  if(d.xf||d.xr||d.mv){if((d.xf||d.xr)&&!d.did){ovr();return}push();if(XFS)XFS.hs=H[H.length-1];ovr();return}
  if(T=='qsel'){qFinish();return}
  if(T=='heal'){if(d.pts){heal(A,d.pts,+sz.value/2);push();render()}return}
@@ -1204,7 +1244,7 @@ const BARS={
  crop:()=>hint('Seret pada kanvas untuk memilih area crop, lalu konfirmasi'),
  eyedrop:()=>clr+SEP+hint('Klik pada kanvas untuk mengambil warna'),
  heal:()=>pk('heal','Brush Picker')+SEP+hint('Gosok pada noda yang ingin dihapus · Shift+klik = garis lurus'),
- brush:()=>pk('brush','Brush Picker')+rng('Opasitas','#op',1,100)+SEP+clr+hint('Shift+klik = garis lurus dari titik terakhir · Shift+seret = lurus sesuai arah seretan'),
+ brush:()=>pk('brush','Brush Picker')+brModeUI()+rng('Opasitas','#op',1,100)+SEP+clr+hint('Shift+klik = garis lurus dari titik terakhir · Shift+seret = lurus sesuai arah seretan'),
  eraser:()=>pk('eraser','Brush Picker')+rng('Opasitas','#op',1,100)+SEP+hint('Shift+klik = garis lurus dari titik terakhir · Shift+seret = lurus sesuai arah seretan'),
  bucket:()=>clr+rng('Toleransi','#tol',0,100)+rng('Opasitas','#op',1,100),
  rect:()=>clr+`<label class="ol">Isi<input type="checkbox" data-bind="#fillc"></label>`+rng('Garis','#sz',1,200)+rng('Opasitas','#op',1,100),
@@ -3211,11 +3251,12 @@ M.splice(hi3<0?M.length:hi3,0,['Plugin',()=>[...FSPlugin.list.map(pl=>[pl.name,n
    lalu menampilkan pemberitahuan jika versinya lebih baru dari APP_VERSION.
    =================================================================== */
 (function(){
-const APP_VERSION='1.2.0';          /* NAIKKAN angka ini setiap kali Anda merilis index.html baru */
+const APP_VERSION='1.3.0';          /* NAIKKAN angka ini setiap kali Anda merilis index.html baru */
 try{LS.set('fs_appver',APP_VERSION)}catch(e){}   /* dibaca splash.html untuk menampilkan lencana "Aplikasi diperbarui" */
 const UPDATE_URL_DEFAULT='https://raw.githubusercontent.com/JustBadboy/fotoshop/refs/heads/main/version.json';   /* GANTI USER/REPO dengan akun & repo GitHub Anda. Satu-satunya yang perlu diisi; pengguna tidak perlu memasukkan apa pun. */
 const vc=(a,b)=>{const x=String(a).split('.').map(n=>parseInt(n)||0),y=String(b).split('.').map(n=>parseInt(n)||0);for(let i=0;i<Math.max(x.length,y.length);i++){const d=(x[i]||0)-(y[i]||0);if(d)return d>0?1:-1}return 0};
 const getUrl=()=>{const u=LS.get('sf_upd_url')||UPDATE_URL_DEFAULT;return /\/USER\/REPO\//.test(u)?'':u};   /* placeholder belum diganti = pengecekan mati */
+try{if(!LS.get('sf_upd_url')&&!/\/USER\/REPO\//.test(UPDATE_URL_DEFAULT))LS.set('sf_upd_url',UPDATE_URL_DEFAULT)}catch(e){}   /* simpan alamat valid di perangkat: pembaruan berikutnya tidak bisa menghapusnya */
 let PEND=null,busy=false,lastChk=0,DISM='';
 const safeNow=()=>!(typeof docs!=='undefined'&&docs.length);   /* aman dimuat ulang hanya bila tidak ada dokumen terbuka */
 const canAuto=j=>!!(window.electronAPI&&typeof window.electronAPI.applyUpdate=='function'&&j.htmlUrl&&j.sha256&&LS.get('sf_upd_fail')!==String(j.version)&&safeNow());
