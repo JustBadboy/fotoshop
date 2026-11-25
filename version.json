@@ -1,9 +1,9 @@
 {
-  "version": "1.3.0",
+  "version": "1.4.0",
   "htmlUrl": "index.html",
-  "sha256": "87f444e78661bae5a166762ce8397540a3d0c40ded6d731265fa1739c2c28248",
+  "sha256": "2a40c6fdd4ef5f0e19f510e69b3427c4ba5ade138a5b426ef078b387ab728311",
   "notes": [
-    "Mode kuas (blend mode): Normal, Dissolve, Behind, Clear, Darken, Multiply, Color Burn, Linear Burn, Darker Color, Lighten, Screen, Color Dodge, Linear Dodge, Lighter Color, Overlay, Soft/Hard/Vivid/Linear/Pin Light, Hard Mix, Difference, Exclusion, Subtract, Divide, Hue, Saturation, Color, Luminosity"
+    "Plugin baru: Jas Otomatis (menu Plugin) – ganti pakaian subjek dengan jas pria/wanita: deteksi subjek otomatis, 3 titik leher & bahu yang bisa digeser, gaya dasi/kerah, warna jas, hasil berupa layer baru"
   ],
   "splash": {
     "version": "4",
