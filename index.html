@@ -3246,12 +3246,230 @@ M.splice(hi3<0?M.length:hi3,0,['Plugin',()=>[...FSPlugin.list.map(pl=>[pl.name,n
 })();
 
 /* ===================================================================
+   PLUGIN "JAS OTOMATIS" (v1.0) — ganti pakaian subjek dengan jas pria / wanita
+   Menu: Plugin → Jas Otomatis. Hasil = layer baru "Jas" di atas foto (foto asli tidak diubah).
+   Alur: deteksi subjek otomatis (atau pakai seleksi Anda) → perkiraan leher & bahu → 3 titik yang bisa digeser
+         → jas digambar menutupi pakaian lama mengikuti siluet tubuh.
+   =================================================================== */
+(function(){
+/*JAS_CORE_START*/
+/* ---------- warna ---------- */
+const jasHex=c=>{c=(c||'#000000').replace('#','');if(c.length==3)c=c.replace(/./g,'$&$&');return[0,2,4].map(i=>parseInt(c.substr(i,2),16)||0)};
+const jasRgb=(r,g,b)=>'#'+[r,g,b].map(v=>Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join('');
+/* f>0 = campur putih, f<0 = campur hitam */
+const jasShade=(c,f)=>{const [r,g,b]=jasHex(c),t=f<0?0:255,k=Math.abs(f);return jasRgb(r+(t-r)*k,g+(t-g)*k,b+(t-b)*k)};
+/* ---------- perkiraan leher & bahu dari mask subjek (profil lebar baris) ---------- */
+function jasEstimate(m,w,h){
+ const cnt=new Int32Array(h),x0=new Int32Array(h).fill(w),x1=new Int32Array(h).fill(-1);let area=0;
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(m[y*w+x]){cnt[y]++;area++;if(x<x0[y])x0[y]=x;if(x>x1[y])x1[y]=x}
+ if(area<w*h*.04||area>w*h*.68)return null;
+ let top=-1;for(let y=0;y<h;y++)if(cnt[y]>=w*.02){top=y;break}if(top<0||top>h*.5)return null;
+ const T=h-top,Wd=new Float32Array(h);for(let y=top;y<h;y++)Wd[y]=x1[y]>=0?x1[y]-x0[y]+1:0;
+ const S=new Float32Array(h);for(let y=top;y<h;y++){let s=0,n=0;for(let k=-3;k<=3;k++){const v=Wd[y+k];if(v!==undefined&&y+k>=top){s+=v;n++}}S[y]=s/n}
+ const hs=[];for(let y=Math.round(top+.08*T);y<=Math.round(top+.30*T);y++)hs.push(S[y]);hs.sort((a,b)=>a-b);const Wref=hs[hs.length>>1];if(!(Wref>w*.08))return null;
+ /* baris saat lebar melewati 1.5x lebar kepala = lereng bahu */
+ let yc=-1;for(let y=Math.round(top+.28*T);y<h;y++)if(S[y]>1.5*Wref){yc=y;break}if(yc<0)return null;
+ /* leher = lebar minimum antara kepala dan lereng bahu */
+ let yn=yc,wn=1e9;for(let y=Math.round(top+.2*T);y<=yc;y++)if(S[y]<wn){wn=S[y];yn=y}
+ const hi=Math.min(h-1,yc+Math.round(.6*(h-yc)));let wm=0;for(let y=yc;y<=hi;y++)if(S[y]>wm)wm=S[y];
+ let yt=yc;for(let y=yc;y<=hi;y++)if(S[y]>=.92*wm){yt=y;break}
+ let xl=1e9,xr=-1;for(let y=Math.max(yc,yt-1);y<=Math.min(h-1,yt+1);y++){if(x0[y]<xl)xl=x0[y];if(x1[y]>xr)xr=x1[y]}
+ const u=xr-xl;if(u<w*.3)return null;
+ /* titik tengah leher dari kepala (bukan dari bahu) */
+ let sx=0,sn=0;for(let y=yn-2;y<=yn+2;y++)if(x1[y]>=0){sx+=(x0[y]+x1[y])/2;sn++}const nx=sx/sn;
+ return{N:[nx,yn+.30*(yt-yn)],L:[xl,yt],R:[xr,yt],nwU:Math.max(.07,Math.min(.17,(wn/2)/u)),top,yn,yc,yt,wn,ok:true}}
+/* tebakan bila deteksi gagal / tidak meyakinkan */
+function jasPrior(w,h){return{N:[w/2,h*.62],L:[w*.08,h*.74],R:[w*.92,h*.74],nwU:.11,ok:false}}
+/* ---------- tata letak lokal dari 3 titik ---------- */
+function jasLayout(g){const dx=g.R[0]-g.L[0],dy=g.R[1]-g.L[1],u=Math.max(8,Math.hypot(dx,dy));let th=Math.atan2(dy,dx);th=Math.max(-.22,Math.min(.22,th));
+ const c=Math.cos(-th),s=Math.sin(-th),loc=p=>{const x=p[0]-g.N[0],y=p[1]-g.N[1];return[(x*c-y*s)/u,(x*s+y*c)/u]};
+ const l=loc(g.L),r=loc(g.R);return{u,th,N:g.N,nw:g.nwU,ys:Math.max(.02,Math.min(.4,(l[1]+r[1])/2)),xl:l[0],xr:r[0]}}
+/* ---------- bentuk (satuan = lebar bahu u; titik asal = pangkal leher; y ke bawah) ---------- */
+const jasMir=p=>p.map(([x,y])=>[-x,y]);
+const jasCurve=(a,b,c,d,n)=>{const o=[];for(let i=0;i<=n;i++){const t=i/n,q=1-t;o.push([q*q*q*a[0]+3*q*q*t*b[0]+3*q*t*t*c[0]+t*t*t*d[0],q*q*q*a[1]+3*q*q*t*b[1]+3*q*t*t*c[1]+t*t*t*d[1]])}return o};
+function jasShapes(LY,o){const f=o.g=='f',nw=LY.nw,c0=nw+.03,ys=LY.ys,dep=o.depth||1,Vd=(f?.60:.68)*dep;
+  /* garis atas jas (lereng bahu) -> area tubuh yang diganti; ujungnya mengikuti titik bahu (xl, xr) */
+ const lift=(o.lift||0)+(o.useMask?.07:0),xl=Math.min(-.3,LY.xl),xr=Math.max(.3,LY.xr);
+ const shL=jasCurve([-c0,-.05-lift],[-c0-.10,-.045-lift],[xl*.78,ys-.075-lift],[xl,ys-.04-lift],14),shR=jasCurve([c0,-.05-lift],[c0+.10,-.045-lift],[xr*.78,ys-.075-lift],[xr,ys-.04-lift],14);   /* neck -> tip */
+ const clip=[[-3,ys-.04-lift],...shL.slice().reverse(),[-c0,0],[c0,0],...shR,[3,ys-.04-lift],[3,14],[-3,14]];
+ const mg=o.useMask?.10:.012,lim=[xl-mg,xr+mg],core=[[-.34,ys*.5],[.34,ys*.5],[.34,14],[-.34,14]];
+ const V=[[-c0+.012,-.03],[c0-.012,-.03],[0,Vd]];
+ const ops=[];const P=(pts,fill,x)=>ops.push(Object.assign({k:'poly',pts,fill},x||{}));
+ /* bayangan di leher tepat di atas kerah */
+ P([[-nw*1.05,-.045],[nw*1.05,-.045],[nw*.8,.0],[-nw*.8,.0]],'#000',{a:.28,blur:.018});
+ /* kemeja / blus mengisi V */
+ P(V,'$shirt',{clip:'V'});
+ P([[-c0+.012,-.03],[-c0+.05,-.03],[.014,Vd-.02],[0,Vd]],'#000',{a:.20,blur:.012,clip:'V'});
+ P([[c0-.012,-.03],[c0-.05,-.03],[-.014,Vd-.02],[0,Vd]],'#000',{a:.20,blur:.012,clip:'V'});
+ const st=o.style;
+ if(!f&&st=='dasi'){ /* dasi panjang */
+  P([[-.030,.040],[.030,.040],[.040,.100],[.012,.128],[-.012,.128],[-.040,.100]],'$tie',{clip:'V'});
+  P([[-.024,.118],[.024,.118],[.066,1.0],[0,1.08],[-.066,1.0]],'$tie',{clip:'V'});
+  P([[-.012,.14],[.002,.14],[.012,.95],[-.022,.95]],'#fff',{a:.16,clip:'V'});
+  P([[-.034,.098],[.034,.098],[.040,.100],[.012,.128],[-.012,.128],[-.040,.100]],'#000',{a:.25,clip:'V'});
+ }else if(!f&&st=='kupu'){
+  P([[-.018,.03],[-.108,-.004],[-.100,.108],[-.018,.072]],'$tie',{clip:'V'});
+  P([[.018,.03],[.108,-.004],[.100,.108],[.018,.072]],'$tie',{clip:'V'});
+  P([[-.020,.028],[.020,.028],[.020,.076],[-.020,.076]],'$tie',{shade:-.25,clip:'V'});
+ }else if(!f&&st=='terbuka'){
+  P([[-.004,.05],[.004,.05],[.004,Vd],[-.004,Vd]],'#000',{a:.14,clip:'V'});
+  for(let i=0;i<3;i++)ops.push({k:'dot',x:0,y:.16+i*.2,r:.011,fill:'$shirtd',clip:'V'});
+ }
+ /* skin patch untuk leher bulat / V (warna kulit diambil dari foto) */
+ if(f&&st=='bulat'){const a=[];for(let i=0;i<=16;i++){const t=Math.PI*i/16;a.push([-(nw+.012)*Math.cos(t),-.03+.085*Math.sin(t)])}P([[-(nw+.012),-.05],[(nw+.012),-.05],...a.slice().reverse()],'$skin',{blur:.006,skinFix:1})}
+ if(f&&st=='v'){P([[-(nw+.02),-.05],[nw+.02,-.05],[nw+.02,-.03],[0,.15],[-(nw+.02),-.03]],'$skin',{blur:.006,skinFix:1});
+  P([[-(nw+.02),-.03],[0,.15],[0,.14],[-(nw+.014),-.03]],'#000',{a:.16,blur:.004})}
+ /* kerah kemeja / blus */
+ if(st=='dasi'||st=='kupu'||st=='terbuka'||st=='kerah'){const k=f?.8:1,wing=[[-.012,.040*k],[-nw,-.095*k],[-(nw+.045),-.045*k],[-(nw+.060),.03*k],[-.095,.125*k]];
+  P(wing,'$shirt',{stroke:'$shirtd',sw:.0032});P(jasMir(wing),'$shirt',{stroke:'$shirtd',sw:.0032});
+  P([[-.012,.04*k],[-.095,.125*k],[-.07,.09*k]],'#000',{a:.10});P([[.012,.04*k],[.095,.125*k],[.07,.09*k]],'#000',{a:.10})}
+ /* lapel (kerah jas) */
+ const w1=f?.6:1,lp=[[-c0,-.035],[-(c0+.075*w1),-.04],[-(c0+.145*w1),.045],[-(c0+.095*w1),.085],[-(c0+.19*w1),.20],[-(c0+.10*w1),.44*Vd/.68],[-.045,Vd-.02],[0,Vd]];
+ P(lp,'$jlight',{stroke:'$jdark',sw:.0042});P(jasMir(lp),'$jlight',{stroke:'$jdark',sw:.0042});
+ P([[-c0,-.035],[-(c0+.075*w1),-.04],[-(c0+.145*w1),.045]],'#fff',{a:.07});P([[c0,-.035],[(c0+.075*w1),-.04],[(c0+.145*w1),.045]],'#fff',{a:.07});
+ /* garis depan jas + kancing */
+ ops.push({k:'line',pts:[[0,Vd],[.003,14]],stroke:'$jdark',sw:.0055});ops.push({k:'line',pts:[[.006,Vd],[.009,14]],stroke:'#fff',sw:.0018,a:.10});
+ ops.push({k:'dot',x:.022,y:Vd+.07,r:.0165,fill:'$jdark'});ops.push({k:'dot',x:.022,y:Vd+.34,r:.0165,fill:'$jdark'});
+ ops.push({k:'dot',x:.019,y:Vd+.065,r:.006,fill:'#fff',a:.35});ops.push({k:'dot',x:.019,y:Vd+.335,r:.006,fill:'#fff',a:.35});
+ return{clip,V,ops,lim,core,Vd}}
+/*JAS_CORE_END*/
+const JM=['#1b1c20','#1f2a44','#3a3f4a','#6b6f78','#4a3a2e','#2f3b2f'],JF=['#1b1c20','#1f2a44','#2b2d33','#5b1f2b','#6b6f78','#d9cdbd'],SH=['#f4f4f2','#cfe0f2','#efe6d6','#f1d7de','#2a2a2e'],TI=['#8e1b24','#243a6b','#1f5a3a','#c9a227','#4a4a52','#6a2c7a'];
+const STY={m:[['dasi','Dasi panjang'],['kupu','Dasi kupu-kupu'],['terbuka','Kerah terbuka (tanpa dasi)']],f:[['kerah','Blus berkerah'],['bulat','Leher bulat'],['v','Leher V']]};
+let NOISE=null;const noise=()=>{if(NOISE)return NOISE;const c=mk(128,128),g=c.getContext('2d'),im=g.createImageData(128,128),d=im.data;let s=12345;for(let i=0;i<d.length;i+=4){s=(s*1664525+1013904223)>>>0;const v=s>>>24;d[i]=d[i+1]=d[i+2]=v;d[i+3]=255}g.putImageData(im,0,0);return NOISE=c};
+/* mask lembut: blur + ambang -> melebar sedikit, menutup lubang kecil, tepi halus */
+function jasSoftMask(src,W,H,r){const c=mk(W,H),g=c.getContext('2d');g.filter='blur('+r+'px)';g.drawImage(src,0,0,W,H);g.filter='none';
+ const im=g.getImageData(0,0,W,H),d=im.data;for(let i=3;i<d.length;i+=4){const t=Math.min(1,Math.max(0,(d[i]/255-.10)/.35));d[i]=t*t*(3-2*t)*255}g.putImageData(im,0,0);return c}
+/* ---------- pelukis jas: menghasilkan kanvas W x H (transparan) berisi jas ---------- */
+function jasRender(W,H,G,o,maskC){
+ const LY=jasLayout(G),S=jasShapes(LY,o),u=LY.u,N=LY.N,out=mk(W,H),g=out.getContext('2d');
+ const tf=c=>{c.translate(N[0],N[1]);c.rotate(LY.th);c.scale(u,u)};
+ const path=(c,p)=>{c.beginPath();for(let i=0;i<p.length;i++)i?c.lineTo(p[i][0],p[i][1]):c.moveTo(p[i][0],p[i][1]);c.closePath()};
+ const bf=o.bright||1,J=bf>=1?jasShade(o.jacket,(bf-1)*.6):jasShade(o.jacket,(bf-1)*.9);
+ const pal={'$shirt':o.shirt,'$shirtd':jasShade(o.shirt,-.22),'$tie':o.tie,'$jlight':jasShade(J,.11),'$jdark':jasShade(J,-.42),'$skin':o.skin||'#d6a58b'};
+ const colr=(v,sh)=>{const c=pal[v]||v;return sh?jasShade(c,sh):c};
+ /* 1. area tubuh yang diganti = di bawah garis bahu, dalam batas bahu, dan (opsional) di dalam siluet subjek */
+ const body=mk(W,H),bg=body.getContext('2d');
+ bg.save();tf(bg);path(bg,S.clip);bg.fillStyle='#000';bg.fill();bg.restore();
+ bg.globalCompositeOperation='destination-in';bg.save();tf(bg);bg.fillStyle='#000';bg.fillRect(S.lim[0],-1,S.lim[1]-S.lim[0],24);bg.restore();
+ if(o.useMask&&maskC){const m=jasSoftMask(maskC,W,H,Math.max(1,.016*u)),cg=m.getContext('2d');cg.save();tf(cg);path(cg,S.core);cg.fillStyle='#000';cg.fill();cg.restore();bg.globalCompositeOperation='destination-in';bg.drawImage(m,0,0)}
+ /* 2. kain: warna + cahaya + tekstur, lalu bayangan tepi supaya terlihat bervolume */
+ const fab=mk(W,H),fg=fab.getContext('2d');fg.fillStyle=J;fg.fillRect(0,0,W,H);
+ const gx=N[0],gy=N[1]+.55*u,gr=fg.createRadialGradient(gx,gy,0,gx,gy,.95*u);gr.addColorStop(0,'rgba(255,255,255,.10)');gr.addColorStop(1,'rgba(0,0,0,.16)');fg.fillStyle=gr;fg.fillRect(0,0,W,H);
+ if((o.tex||0)>0){const k=Math.max(.5,u/420);fg.save();fg.globalCompositeOperation='soft-light';fg.globalAlpha=Math.min(1,o.tex*.9);fg.scale(k,k);fg.fillStyle=fg.createPattern(noise(),'repeat');fg.fillRect(0,0,W/k,H/k);fg.restore()}
+ fg.globalCompositeOperation='destination-in';fg.drawImage(body,0,0);
+ const sh=mk(W,H),sg=sh.getContext('2d');sg.fillStyle='#000';sg.fillRect(0,0,W,H);sg.globalCompositeOperation='destination-out';sg.filter='blur('+(.045*u)+'px)';sg.drawImage(body,0,0);
+ fg.globalCompositeOperation='source-atop';fg.globalAlpha=.42;fg.drawImage(sh,0,0);fg.globalAlpha=1;fg.globalCompositeOperation='source-over';
+ g.drawImage(fab,0,0);
+ /* 3. kemeja/blus, dasi, kerah, lapel, kancing */
+ g.save();tf(g);
+ for(const op of S.ops){g.save();if(op.clip=='V'){path(g,S.V);g.clip()}
+  g.globalAlpha=op.a==null?1:op.a;g.filter=op.blur?'blur('+(op.blur*u)+'px)':'none';
+  if(op.k=='poly'){path(g,op.pts);g.fillStyle=colr(op.fill,op.shade);g.fill();if(op.stroke){g.filter='none';g.globalAlpha=.85;g.lineWidth=op.sw;g.lineJoin='round';g.strokeStyle=colr(op.stroke);g.stroke()}}
+  else if(op.k=='line'){g.beginPath();for(let i=0;i<op.pts.length;i++)i?g.lineTo(op.pts[i][0],op.pts[i][1]):g.moveTo(op.pts[i][0],op.pts[i][1]);g.lineWidth=op.sw;g.lineCap='round';g.strokeStyle=colr(op.stroke);g.stroke()}
+  else if(op.k=='dot'){g.beginPath();g.arc(op.x,op.y,op.r,0,7);g.fillStyle=colr(op.fill);g.fill()}
+  g.restore()}
+ g.restore();return out}
+/* ---------- deteksi subjek di Web Worker milik "Select subject" (dipakai bersama) ---------- */
+function jasSubject(d,w,h){return new Promise(res=>{try{if(typeof SUBJ_BUSY!=='undefined'&&SUBJ_BUSY){res(null);return}
+ const wk=subjWorker();SUBJ_BUSY=true;const fin=r=>{SUBJ_BUSY=false;res(r)};
+ wk.onmessage=e=>fin(e.data&&e.data.ok?new Uint8ClampedArray(e.data.out):null);wk.onerror=()=>fin(null);
+ const buf=d.slice().buffer;wk.postMessage({buf,w,h},[buf])}catch(e){SUBJ_BUSY=false;try{res(subjectCompute(d,w,h))}catch(_){res(null)}}})}
+/* warna kulit di atas pangkal leher (untuk gaya leher bulat / V) */
+function jasSkinAt(photoC,G){const LY=jasLayout(G),u=LY.u,W=photoC.width,H=photoC.height;let x=Math.round(G.N[0]-.05*u),y=Math.round(G.N[1]-.15*u),w=Math.max(2,Math.round(.10*u)),h=Math.max(2,Math.round(.08*u));
+ x=Math.max(0,Math.min(W-2,x));y=Math.max(0,Math.min(H-2,y));w=Math.min(w,W-x);h=Math.min(h,H-y);
+ try{const d=photoC.getContext('2d').getImageData(x,y,w,h).data;let r=0,g=0,b=0;const n=d.length/4;for(let i=0;i<d.length;i+=4){r+=d[i];g+=d[i+1];b+=d[i+2]}return jasRgb(r/n,g/n,b/n)}catch(e){return'#d6a58b'}}
+function jasCss(){if(document.getElementById('jasCss'))return;const s=document.createElement('style');s.id='jasCss';s.textContent=`
+.jsw{display:flex;gap:14px;align-items:flex-start;max-width:96vw}.jsp{flex:1 1 auto;min-width:0}.jsp canvas{display:block;max-width:100%;max-height:68vh;margin:0 auto;border-radius:6px;background:#222;touch-action:none;cursor:crosshair}
+.jsc{flex:0 0 250px;display:flex;flex-direction:column;gap:9px;font-size:12px}.jsc b{display:block;margin-bottom:4px;font-weight:600}.jsc label{display:flex;align-items:center;gap:6px}.jsc input[type=range]{flex:1}
+.jsg{display:flex;gap:6px}.jsg button{flex:1;padding:6px 8px;border:1px solid #555;border-radius:6px;background:#2a2a2a;color:#eee;cursor:pointer}.jsg button.on{background:#2b6cdf;border-color:#2b6cdf}
+.jss{display:flex;flex-wrap:wrap;gap:5px;align-items:center}.jss .sw{width:24px;height:24px;border-radius:5px;border:2px solid #555;cursor:pointer;padding:0}.jss .sw.on{border-color:#fff;box-shadow:0 0 0 1px #2b6cdf}.jss input[type=color]{width:28px;height:26px;padding:0;border:0;background:none}
+.jst{font-size:11px;color:#9ab;line-height:1.45}.jsx{padding:6px 10px;border:1px solid #555;border-radius:6px;background:#2a2a2a;color:#eee;cursor:pointer}
+@media(max-width:760px){.jsw{flex-direction:column}.jsc{flex:none;width:100%}}`;document.head.append(s)}
+/* ---------- dialog ---------- */
+function jasOpen(gender){
+ if(!cur||!L.length)return toast('Buka foto dulu, lalu jalankan plugin ini');
+ jasCss();render();
+ const sc=Math.min(1,880/Math.max(D.w,D.h)),ww=Math.max(2,Math.round(D.w*sc)),wh=Math.max(2,Math.round(D.h*sc));
+ const photoC=mk(ww,wh);photoC.getContext('2d').drawImage(cv,0,0,ww,wh);
+ const st={g:gender,style:gender=='m'?'dasi':'kerah',jacket:gender=='m'?JM[1]:JF[2],shirt:SH[0],tie:TI[0],depth:1,lift:0,tex:.5,bright:1,useMask:true,G:jasPrior(ww,wh),maskC:null,touched:false,closed:false,skin:'#d6a58b',seq:0};
+ const swatches=(id,list)=>`<div class="jss" id="${id}">${list.map(c=>`<button class="sw" data-c="${c}" style="background:${c}" title="${c}"></button>`).join('')}<input type="color" value="${list[0]}" title="Warna lain"></div>`;
+ const body=`<div class="jsw"><div class="jsp"><canvas id="jsPv"></canvas></div><div class="jsc">
+  <div><b>Jenis</b><div class="jsg" id="jsGen"><button data-g="m">Jas pria</button><button data-g="f">Jas wanita</button></div></div>
+  <div><b>Gaya</b><select id="jsStyle" style="width:100%"></select></div>
+  <div><b>Warna jas</b><div id="jsJW"></div></div>
+  <div><b>Kemeja / blus</b>${swatches('jsSW',SH)}</div>
+  <div id="jsTieRow"><b>Dasi</b>${swatches('jsTW',TI)}</div>
+  <label>Kedalaman V<input type="range" id="jsDep" min="70" max="135" value="100"></label>
+  <label>Garis bahu naik<input type="range" id="jsLift" min="0" max="14" value="0"></label>
+  <label>Tekstur kain<input type="range" id="jsTex" min="0" max="100" value="50"></label>
+  <label>Kecerahan jas<input type="range" id="jsBr" min="70" max="130" value="100"></label>
+  <label><input type="checkbox" id="jsMask" checked> Ikuti siluet subjek</label>
+  <label id="jsSelRow" style="display:none"><input type="checkbox" id="jsSel" checked> Pakai seleksi saya sebagai subjek</label>
+  <button class="jsx" id="jsRe">Deteksi ulang subjek</button>
+  <div class="jst" id="jsSt"></div></div></div>`;
+ const o=fsDlg('Jas Otomatis',body,'Terapkan',()=>{try{jasApply(st,photoC,ww,wh)}catch(err){console.error(err);toast('Gagal membuat jas: '+err.message);return false}st.closed=true},()=>{st.closed=true});
+ const q=s=>o.querySelector(s),fb=o.querySelector('.fbox');fb.style.width='min(1020px,96vw)';fb.style.maxWidth='96vw';fb.style.maxHeight='94vh';fb.style.overflow='auto';
+ const pv=q('#jsPv');pv.width=ww;pv.height=wh;const status=t=>{q('#jsSt').textContent=t};
+ let raf=0;const redraw=()=>{if(raf)return;raf=requestAnimationFrame(()=>{raf=0;if(st.closed)return;draw()})};
+ const opts=()=>({g:st.g,style:st.style,jacket:st.jacket,shirt:st.shirt,tie:st.tie,depth:st.depth,lift:st.lift,tex:st.tex,bright:st.bright,useMask:st.useMask&&!!st.maskC,skin:st.skin});
+ function draw(){st.skin=jasSkinAt(photoC,st.G);const c=pv.getContext('2d');c.clearRect(0,0,ww,wh);c.drawImage(photoC,0,0);
+  c.drawImage(jasRender(ww,wh,st.G,opts(),st.maskC),0,0);
+  const r=pv.getBoundingClientRect(),k=r.width?ww/r.width:1;c.lineWidth=2*k;
+  for(const [key,col,lab] of [['N','#3ddc84','Leher'],['L','#ffd23f','Bahu'],['R','#ffd23f','Bahu']]){const p=st.G[key];c.beginPath();c.arc(p[0],p[1],7*k,0,7);c.fillStyle=col;c.fill();c.strokeStyle='#000';c.stroke();c.font=(11*k)+'px system-ui,sans-serif';c.fillStyle='#fff';c.strokeStyle='#000';c.lineWidth=3*k;c.strokeText(lab,p[0]+10*k,p[1]-9*k);c.fillText(lab,p[0]+10*k,p[1]-9*k);c.lineWidth=2*k}}
+ /* seret 3 titik */
+ let dk=null;const pos=e=>{const r=pv.getBoundingClientRect();return[(e.clientX-r.left)*ww/r.width,(e.clientY-r.top)*wh/r.height]};
+ pv.addEventListener('pointerdown',e=>{const p=pos(e),r=pv.getBoundingClientRect();let best=null,bd=20*ww/r.width;for(const key of['N','L','R']){const d=Math.hypot(st.G[key][0]-p[0],st.G[key][1]-p[1]);if(d<bd){bd=d;best=key}}if(best){dk=best;st.touched=true;pv.setPointerCapture(e.pointerId);e.preventDefault()}});
+ pv.addEventListener('pointermove',e=>{if(!dk)return;const p=pos(e);st.G[dk]=[Math.max(0,Math.min(ww,p[0])),Math.max(0,Math.min(wh,p[1]))];redraw()});
+ const up=()=>{dk=null};pv.addEventListener('pointerup',up);pv.addEventListener('pointercancel',up);
+ /* kontrol */
+ const mark=(id,c)=>{q('#'+id).querySelectorAll('.sw').forEach(b=>b.classList.toggle('on',b.dataset.c==c))};
+ const fillJ=()=>{q('#jsJW').innerHTML=swatches('jsJ',st.g=='m'?JM:JF);mark('jsJ',st.jacket)};
+ const syncUI=()=>{q('#jsGen').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.g==st.g));q('#jsStyle').innerHTML=STY[st.g].map(s=>`<option value="${s[0]}">${s[1]}</option>`).join('');q('#jsStyle').value=st.style;q('#jsTieRow').style.display=st.g=='m'&&st.style!='terbuka'?'':'none';fillJ();mark('jsSW',st.shirt);mark('jsTW',st.tie)};
+ q('#jsGen').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.dataset.g==st.g)return;st.g=b.dataset.g;st.style=STY[st.g][0][0];st.jacket=st.g=='m'?JM[1]:JF[2];syncUI();redraw()});
+ q('#jsStyle').addEventListener('change',e=>{st.style=e.target.value;q('#jsTieRow').style.display=st.g=='m'&&st.style!='terbuka'?'':'none';redraw()});
+ const swEv=(id,key)=>{const r=q('#'+id);r.addEventListener('click',e=>{const b=e.target.closest('.sw');if(!b)return;st[key]=b.dataset.c;mark(id,st[key]);redraw()});r.addEventListener('input',e=>{if(e.target.type=='color'){st[key]=e.target.value;mark(id,'');redraw()}})};
+ const jw=q('#jsJW');jw.addEventListener('click',e=>{const b=e.target.closest('.sw');if(!b)return;st.jacket=b.dataset.c;mark('jsJ',st.jacket);redraw()});jw.addEventListener('input',e=>{if(e.target.type=='color'){st.jacket=e.target.value;mark('jsJ','');redraw()}});
+ swEv('jsSW','shirt');swEv('jsTW','tie');
+ const sl=(id,fn)=>q('#'+id).addEventListener('input',e=>{fn(+e.target.value);redraw()});
+ sl('jsDep',v=>st.depth=v/100);sl('jsLift',v=>st.lift=v/100);sl('jsTex',v=>st.tex=v/100);sl('jsBr',v=>st.bright=v/100);
+ q('#jsMask').addEventListener('change',e=>{st.useMask=e.target.checked;redraw()});
+ q('#jsSel').addEventListener('change',()=>detect());q('#jsRe').addEventListener('click',()=>{st.touched=false;detect()});
+ /* deteksi subjek + perkiraan leher & bahu */
+ async function detect(){const my=++st.seq;status('Mendeteksi subjek… (beberapa detik, tetap bisa menggeser titik)');
+  const segW=Math.min(480,ww),segH=Math.max(2,Math.round(wh*segW/ww)),sc2=mk(segW,segH),sg=sc2.getContext('2d');let mask=null,fromSel=false;
+  if(SEL&&SEL.m&&SEL.m.width==D.w&&q('#jsSel').checked){fromSel=true;sg.drawImage(SEL.m,0,0,segW,segH);const d=sg.getImageData(0,0,segW,segH).data;mask=new Uint8ClampedArray(segW*segH);let n=0;for(let i=0;i<mask.length;i++)if(d[i*4+3]>127){mask[i]=255;n++}if(n<mask.length*.02)mask=null}
+  else{sg.drawImage(photoC,0,0,segW,segH);mask=await jasSubject(sg.getImageData(0,0,segW,segH).data,segW,segH)}
+  if(st.closed||my!=st.seq)return;
+  if(!mask){st.maskC=null;st.useMask=false;q('#jsMask').checked=false;if(!st.touched)st.G=jasPrior(ww,wh);status('Subjek tidak terdeteksi otomatis. Geser titik Leher (hijau) dan Bahu (kuning) ke posisi yang pas. Tips: buat seleksi subjek dulu (Quick Selection / Lasso) lalu buka plugin ini lagi.');draw();return}
+  const mc=mk(segW,segH),mg=mc.getContext('2d'),im=mg.createImageData(segW,segH);for(let i=0;i<mask.length;i++)if(mask[i])im.data[i*4+3]=255;mg.putImageData(im,0,0);
+  st.maskC=mk(ww,wh);st.maskC.getContext('2d').drawImage(mc,0,0,ww,wh);
+  const e=jasEstimate(mask,segW,segH),k=ww/segW;
+  if(e){st.useMask=true;q('#jsMask').checked=true;if(!st.touched)st.G={N:[e.N[0]*k,e.N[1]*k],L:[e.L[0]*k,e.L[1]*k],R:[e.R[0]*k,e.R[1]*k],nwU:e.nwU};status((fromSel?'Memakai seleksi Anda. ':'Subjek terdeteksi. ')+'Periksa 3 titik: Leher (hijau) di pangkal leher, Bahu (kuning) di ujung bahu kiri & kanan. Geser bila perlu, lalu Terapkan.')}
+  else{st.useMask=false;q('#jsMask').checked=false;if(!st.touched)st.G=jasPrior(ww,wh);status('Subjek terdeteksi tetapi leher/bahu tidak pasti (latar ramai atau kepala terpotong). Geser 3 titik ke leher & bahu. Untuk hasil terbaik buat seleksi subjek dulu.')}
+  draw()}
+ q('#jsSelRow').style.display=SEL&&SEL.m&&SEL.m.width==D.w?'':'none';
+ syncUI();draw();detect()}
+/* ---------- terapkan: render beresolusi penuh hanya di area jas, jadikan layer baru ---------- */
+function jasApply(st,photoC,ww,wh){
+ const k=D.w/ww,Gd={N:st.G.N.map(v=>v*k),L:st.G.L.map(v=>v*k),R:st.G.R.map(v=>v*k),nwU:st.G.nwU},LYd=jasLayout(Gd),u=LYd.u;
+ const bx=Math.max(0,Math.floor(Math.min(Gd.L[0],Gd.R[0],Gd.N[0])-.16*u)),bx1=Math.min(D.w,Math.ceil(Math.max(Gd.L[0],Gd.R[0],Gd.N[0])+.16*u)),by=Math.max(0,Math.floor(Math.min(Gd.N[1]-.22*u,Gd.L[1]-.12*u,Gd.R[1]-.12*u))),bw=bx1-bx,bh=D.h-by;
+ if(bw<8||bh<8)throw new Error('area jas di luar gambar – geser titik');
+ const Gs={N:[Gd.N[0]-bx,Gd.N[1]-by],L:[Gd.L[0]-bx,Gd.L[1]-by],R:[Gd.R[0]-bx,Gd.R[1]-by],nwU:Gd.nwU};
+ let mc=null;if(st.useMask&&st.maskC){mc=mk(bw,bh);mc.getContext('2d').drawImage(st.maskC,bx/k,by/k,bw/k,bh/k,0,0,bw,bh)}
+ const o={g:st.g,style:st.style,jacket:st.jacket,shirt:st.shirt,tie:st.tie,depth:st.depth,lift:st.lift,tex:st.tex,bright:st.bright,useMask:!!mc,skin:jasSkinAt(photoC,st.G)};
+ const suit=jasRender(bw,bh,Gs,o,mc);
+ addLayer(st.g=='m'?'Jas Pria':'Jas Wanita',suit,bx,by);push('Jas otomatis');sync();toast('Jas ditambahkan sebagai layer baru – foto asli tetap utuh (sembunyikan layer untuk membandingkan)')}
+FSPlugin.register({id:'jas-otomatis',name:'Jas Otomatis',version:'1.0',
+ menu:()=>[['Jas Pria…',()=>jasOpen('m')],['Jas Wanita…',()=>jasOpen('f')],'-',['Tentang plugin Jas Otomatis…',()=>msgBox('Jas Otomatis\n\nMengganti pakaian subjek dengan jas pria/wanita (cocok untuk pas foto). Hasil berupa layer baru, foto asli tidak diubah.\n\nCara pakai: buka foto → Plugin → Jas Otomatis → periksa 3 titik (Leher, Bahu kiri, Bahu kanan) dan geser bila perlu → pilih gaya & warna → Terapkan.\n\nCatatan: deteksi otomatis terbaik pada latar polos. Untuk latar ramai, buat seleksi subjek dulu (Quick Selection/Lasso) lalu buka plugin. Rambut panjang yang menutupi bahu akan tertutup jas. Perhatikan: pas foto resmi (KTP/paspor/visa) biasanya melarang foto yang diedit – cek aturan instansi.')]]});
+})();
+
+/* ===================================================================
    NOTIFIKASI PEMBARUAN APLIKASI
    Aplikasi mengambil file version.json dari alamat yang Anda atur,
    lalu menampilkan pemberitahuan jika versinya lebih baru dari APP_VERSION.
    =================================================================== */
 (function(){
-const APP_VERSION='1.3.0';          /* NAIKKAN angka ini setiap kali Anda merilis index.html baru */
+const APP_VERSION='1.4.0';          /* NAIKKAN angka ini setiap kali Anda merilis index.html baru */
 try{LS.set('fs_appver',APP_VERSION)}catch(e){}   /* dibaca splash.html untuk menampilkan lencana "Aplikasi diperbarui" */
 const UPDATE_URL_DEFAULT='https://raw.githubusercontent.com/JustBadboy/fotoshop/refs/heads/main/version.json';   /* GANTI USER/REPO dengan akun & repo GitHub Anda. Satu-satunya yang perlu diisi; pengguna tidak perlu memasukkan apa pun. */
 const vc=(a,b)=>{const x=String(a).split('.').map(n=>parseInt(n)||0),y=String(b).split('.').map(n=>parseInt(n)||0);for(let i=0;i<Math.max(x.length,y.length);i++){const d=(x[i]||0)-(y[i]||0);if(d)return d>0?1:-1}return 0};
